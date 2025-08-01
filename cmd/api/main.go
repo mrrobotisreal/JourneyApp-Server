@@ -78,6 +78,14 @@ func main() {
 		entries.Use(middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient))
 		{
 			entries.POST("/create-entry", entryHandler.CreateEntry)
+			entries.POST("/add-tag", entryHandler.AddTag)
+			entries.POST("/update-tag", entryHandler.UpdateTag)
+			entries.POST("/remove-tag", entryHandler.RemoveTag)
+			entries.POST("/add-location", entryHandler.AddLocation)
+			entries.POST("/update-location", entryHandler.UpdateLocation)
+			entries.POST("/remove-location", entryHandler.RemoveLocation)
+			entries.POST("/add-image", entryHandler.AddImage)
+			entries.POST("/remove-image", entryHandler.RemoveImage)
 		}
 	}
 
