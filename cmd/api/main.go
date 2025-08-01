@@ -78,6 +78,8 @@ func main() {
 		entries.Use(middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient))
 		{
 			entries.POST("/create-entry", entryHandler.CreateEntry)
+			entries.POST("/get-entry", entryHandler.GetEntry)
+			entries.POST("/search-entries", entryHandler.SearchEntries)
 			entries.POST("/add-tag", entryHandler.AddTag)
 			entries.POST("/update-tag", entryHandler.UpdateTag)
 			entries.POST("/remove-tag", entryHandler.RemoveTag)
