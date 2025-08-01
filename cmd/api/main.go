@@ -14,6 +14,7 @@ import (
 	"io.winapps.journeyapp/internal/db"
 	firebaseutil "io.winapps.journeyapp/internal/firebase"
 	"io.winapps.journeyapp/internal/handlers"
+	"io.winapps.journeyapp/internal/middleware"
 )
 
 func main() {
@@ -61,6 +62,7 @@ func main() {
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(firebaseApp, postgresDB, redisClient)
+	entryHandler := handlers.NewEntryHandler(firebaseApp, postgresDB, redisClient)
 
 	// Define routes
 	v1 := router.Group("/api/v1")
@@ -69,6 +71,13 @@ func main() {
 		{
 			auth.POST("/login", authHandler.Login)
 			auth.POST("/create-account", authHandler.CreateAccount)
+		}
+
+		// Protected entries routes
+		entries := v1.Group("/entries")
+		entries.Use(middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient))
+		{
+			entries.POST("/create-entry", entryHandler.CreateEntry)
 		}
 	}
 

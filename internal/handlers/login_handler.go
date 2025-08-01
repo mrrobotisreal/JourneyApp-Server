@@ -158,12 +158,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // storeUserInPostgres stores or updates user information in PostgreSQL
 func (h *AuthHandler) storeUserInPostgres(ctx context.Context, user *usermodels.User) error {
 	query := `
-		INSERT INTO users (uid, display_name, email, photo_url, phone_number, email_verified, phone_number_verified, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+		INSERT INTO users (uid, display_name, email, token, photo_url, phone_number, email_verified, phone_number_verified, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
 		ON CONFLICT (uid)
 		DO UPDATE SET
 			display_name = EXCLUDED.display_name,
 			email = EXCLUDED.email,
+			token = EXCLUDED.token,
 			photo_url = EXCLUDED.photo_url,
 			phone_number = EXCLUDED.phone_number,
 			email_verified = EXCLUDED.email_verified,
@@ -175,6 +176,7 @@ func (h *AuthHandler) storeUserInPostgres(ctx context.Context, user *usermodels.
 		user.UID,
 		user.DisplayName,
 		user.Email,
+		user.Token,
 		user.PhotoURL,
 		user.PhoneNumber,
 		user.EmailVerified,
