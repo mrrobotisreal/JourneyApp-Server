@@ -1,0 +1,103 @@
+package main
+
+import (
+	"context"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"io.winapps.journeyapp/internal/db"
+	firebaseutil "io.winapps.journeyapp/internal/firebase"
+	"io.winapps.journeyapp/internal/handlers"
+)
+
+func main() {
+	// Initialize Firebase
+	firebaseApp, err := firebaseutil.InitFirebase()
+	if err != nil {
+		log.Fatalf("Failed to initialize Firebase: %v", err)
+	}
+
+	// Initialize PostgreSQL
+	postgresDB, err := db.InitPostgres()
+	if err != nil {
+		log.Fatalf("Failed to initialize PostgreSQL: %v", err)
+	}
+	defer postgresDB.Close()
+
+	// Initialize Redis
+	redisClient, err := db.InitRedis()
+	if err != nil {
+		log.Fatalf("Failed to initialize Redis: %v", err)
+	}
+	defer redisClient.Close()
+
+	// Initialize Gin router
+	router := gin.Default()
+
+	// Add CORS middleware for mobile app
+	router.Use(func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	})
+
+	// Initialize handlers
+	authHandler := handlers.NewAuthHandler(firebaseApp, postgresDB, redisClient)
+
+	// Define routes
+	v1 := router.Group("/api/v1")
+	{
+		auth := v1.Group("/auth")
+		{
+			auth.POST("/login", authHandler.Login)
+			auth.POST("/create-account", authHandler.CreateAccount)
+		}
+	}
+
+	// Health check endpoint
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	// Create HTTP server
+	srv := &http.Server{
+		Addr:    ":9091",
+		Handler: router,
+	}
+
+	// Start server in a goroutine
+	go func() {
+		log.Println("Server starting on port 9091...")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+
+	// Give a 5 second timeout for graceful shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Server exited")
+}
