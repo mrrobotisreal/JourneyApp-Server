@@ -10,12 +10,18 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	"io.winapps.journeyapp/internal/db"
 	firebaseutil "io.winapps.journeyapp/internal/firebase"
 	"io.winapps.journeyapp/internal/handlers"
 )
 
 func main() {
+	// Load environment variables from .env file
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using system environment variables")
+	}
+
 	// Initialize Firebase
 	firebaseApp, err := firebaseutil.InitFirebase()
 	if err != nil {

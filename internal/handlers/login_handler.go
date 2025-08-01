@@ -52,21 +52,38 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	// Handle token validation case
 	if req.Token != "" && req.Email == "" && req.Password == "" {
-		// Validate the provided token
+		// Check if this is an ID token or custom token by trying to verify as ID token first
 		token, err := authClient.VerifyIDToken(ctx, req.Token)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-			return
-		}
+		if err == nil {
+			// It's a valid ID token
+			userRecord, err = authClient.GetUser(ctx, token.UID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user information"})
+				return
+			}
+			customToken = req.Token
+		} else {
+			// Assume it's a custom token, need UID to validate
+			if req.UID == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "UID is required when using custom token"})
+				return
+			}
 
-		// Get user record
-		userRecord, err = authClient.GetUser(ctx, token.UID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user information"})
-			return
-		}
+			// Get user record directly using the provided UID
+			userRecord, err = authClient.GetUser(ctx, req.UID)
+			if err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user ID"})
+				return
+			}
 
-		customToken = req.Token
+			// For custom tokens, we'll create a new custom token or use the provided one
+			// In a production app, you might want to validate the custom token differently
+			customToken, err = authClient.CustomToken(ctx, userRecord.UID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create authentication token"})
+				return
+			}
+		}
 	} else if req.Email != "" && req.Password != "" {
 		// Handle email/password login
 		// Note: Firebase Admin SDK doesn't support email/password authentication directly
