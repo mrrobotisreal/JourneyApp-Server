@@ -1,4 +1,5 @@
 internal/firebase/firebase-service-account.json
 .env
 .DS_Store
-internal/.DS_Storeapi
+internal/.DS_Store
+api
