@@ -3,3 +3,4 @@ internal/firebase/firebase-service-account.json
 .DS_Store
 internal/.DS_Store
 api
+bin/
