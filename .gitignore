@@ -4,3 +4,4 @@ internal/firebase/firebase-service-account.json
 internal/.DS_Store
 api
 bin/
+internal/images/

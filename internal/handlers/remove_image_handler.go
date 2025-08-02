@@ -2,7 +2,11 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -68,7 +72,7 @@ func (h *EntryHandler) RemoveImage(c *gin.Context) {
 	}
 	defer tx.Rollback(ctx)
 
-	// Remove image
+	// Remove image from database
 	now := time.Now()
 	imageQuery := `
 		DELETE FROM images WHERE entry_id = $1 AND url = $2
@@ -83,6 +87,12 @@ func (h *EntryHandler) RemoveImage(c *gin.Context) {
 	if rowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Image not found"})
 		return
+	}
+
+	// Delete the physical file
+	if err := h.deleteImageFile(req.ImageURL); err != nil {
+		// Log the error but don't fail the request since the database record is already deleted
+		fmt.Printf("Warning: failed to delete image file %s: %v\n", req.ImageURL, err)
 	}
 
 	// Update entry's updated_at timestamp
@@ -113,4 +123,32 @@ func (h *EntryHandler) RemoveImage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// deleteImageFile deletes the physical image file from the file system
+func (h *EntryHandler) deleteImageFile(imageURL string) error {
+	// Extract the file path from the URL
+	// imageURL format: "/images/{userUID}/{entryID}/{filename}"
+	if !strings.HasPrefix(imageURL, "/images/") {
+		return fmt.Errorf("invalid image URL format: %s", imageURL)
+	}
+
+	// Remove the "/images/" prefix
+	relativePath := strings.TrimPrefix(imageURL, "/images/")
+
+	// Construct the full file path
+	filePath := filepath.Join("internal", "images", relativePath)
+
+	// Check if file exists before trying to delete
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		// File doesn't exist, which is fine - maybe it was already deleted
+		return nil
+	}
+
+	// Delete the file
+	if err := os.Remove(filePath); err != nil {
+		return fmt.Errorf("failed to delete file %s: %w", filePath, err)
+	}
+
+	return nil
 }

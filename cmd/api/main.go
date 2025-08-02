@@ -67,11 +67,12 @@ func main() {
 	// Define routes
 	v1 := router.Group("/api/v1")
 	{
-		auth := v1.Group("/auth")
-		{
-			auth.POST("/login", authHandler.Login)
-			auth.POST("/create-account", authHandler.CreateAccount)
-		}
+			auth := v1.Group("/auth")
+	{
+		auth.POST("/login", authHandler.Login)
+		auth.POST("/create-account", authHandler.CreateAccount)
+		auth.POST("/delete-account", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.DeleteAccount)
+	}
 
 		// Protected entries routes
 		entries := v1.Group("/entries")
@@ -87,7 +88,10 @@ func main() {
 			entries.POST("/update-location", entryHandler.UpdateLocation)
 			entries.POST("/remove-location", entryHandler.RemoveLocation)
 			entries.POST("/add-image", entryHandler.AddImage)
-			entries.POST("/remove-image", entryHandler.RemoveImage)
+					entries.POST("/remove-image", entryHandler.RemoveImage)
+		entries.POST("/get-unique-tags", entryHandler.GetUniqueTags)
+		entries.POST("/get-unique-locations", entryHandler.GetUniqueLocations)
+		entries.POST("/update-entry", entryHandler.UpdateEntry)
 		}
 	}
 
@@ -95,6 +99,9 @@ func main() {
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	// Serve static image files
+	router.Static("/images", "./internal/images")
 
 	// Create HTTP server
 	srv := &http.Server{
