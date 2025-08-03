@@ -357,5 +357,28 @@ func (h *EntryHandler) fetchRelatedDataForEntries(ctx context.Context, entryIDs 
 		}
 	}
 
+	// Fetch audio
+	audioQuery := fmt.Sprintf(`
+		SELECT entry_id, url FROM audio
+		WHERE entry_id IN (%s)
+		ORDER BY entry_id, upload_order
+	`, inClause)
+
+	audioRows, err := h.postgres.Query(ctx, audioQuery, args...)
+	if err != nil {
+		return fmt.Errorf("failed to fetch audio: %w", err)
+	}
+	defer audioRows.Close()
+
+	for audioRows.Next() {
+		var entryID, audioURL string
+		if err := audioRows.Scan(&entryID, &audioURL); err != nil {
+			return fmt.Errorf("failed to scan audio: %w", err)
+		}
+		if entry, exists := entryMap[entryID]; exists {
+			entry.Audio = append(entry.Audio, audioURL)
+		}
+	}
+
 	return nil
 }

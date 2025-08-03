@@ -143,6 +143,21 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 		);
 	`
 
+	// Audio table - stores audio information for entries
+	audioTable := `
+		CREATE TABLE IF NOT EXISTS audio (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			entry_id UUID NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+			url TEXT NOT NULL,
+			filename VARCHAR(500),
+			file_size BIGINT,
+			mime_type VARCHAR(100),
+			duration INTEGER,
+			upload_order INTEGER DEFAULT 0,
+			created_at TIMESTAMP DEFAULT NOW()
+		);
+	`
+
 	// Create indexes for better performance
 	indexes := []string{
 		`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`,
@@ -154,10 +169,12 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 		`CREATE INDEX IF NOT EXISTS idx_tags_key ON tags(key);`,
 		`CREATE INDEX IF NOT EXISTS idx_images_entry_id ON images(entry_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_images_upload_order ON images(entry_id, upload_order);`,
+		`CREATE INDEX IF NOT EXISTS idx_audio_entry_id ON audio(entry_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_audio_upload_order ON audio(entry_id, upload_order);`,
 	}
 
 	// Execute table creation statements
-	tables := []string{usersTable, entriesTable, locationsTable, tagsTable, imagesTable}
+	tables := []string{usersTable, entriesTable, locationsTable, tagsTable, imagesTable, audioTable}
 
 	for _, table := range tables {
 		if _, err := pool.Exec(ctx, table); err != nil {

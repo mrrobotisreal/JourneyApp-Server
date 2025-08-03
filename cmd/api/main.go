@@ -88,10 +88,12 @@ func main() {
 			entries.POST("/update-location", entryHandler.UpdateLocation)
 			entries.POST("/remove-location", entryHandler.RemoveLocation)
 			entries.POST("/add-image", entryHandler.AddImage)
-					entries.POST("/remove-image", entryHandler.RemoveImage)
-		entries.POST("/get-unique-tags", entryHandler.GetUniqueTags)
-		entries.POST("/get-unique-locations", entryHandler.GetUniqueLocations)
-		entries.POST("/update-entry", entryHandler.UpdateEntry)
+			entries.POST("/remove-image", entryHandler.RemoveImage)
+			entries.POST("/add-audio", entryHandler.AddAudio)
+			entries.POST("/remove-audio", entryHandler.RemoveAudio)
+			entries.POST("/get-unique-tags", entryHandler.GetUniqueTags)
+			entries.POST("/get-unique-locations", entryHandler.GetUniqueLocations)
+			entries.POST("/update-entry", entryHandler.UpdateEntry)
 		}
 	}
 
@@ -102,6 +104,9 @@ func main() {
 
 	// Serve static image files
 	router.Static("/images", "./internal/images")
+
+	// Serve static audio files
+	router.Static("/audio", "./internal/audio")
 
 	// Create HTTP server
 	srv := &http.Server{

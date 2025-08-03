@@ -95,13 +95,19 @@ func (h *AuthHandler) deleteAccountCompletely(ctx context.Context, userUID strin
 		fmt.Printf("Warning: failed to delete image files for user %s: %v\n", userUID, err)
 	}
 
-	// Step 6: Clear Redis cache for this user
+	// Step 6: Delete all physical audio files for this user
+	if err := h.deleteUserAudioFiles(userUID); err != nil {
+		// Log but don't fail - file deletion is not critical for data privacy
+		fmt.Printf("Warning: failed to delete audio files for user %s: %v\n", userUID, err)
+	}
+
+	// Step 7: Clear Redis cache for this user
 	if err := h.clearUserRedisCache(ctx, userUID, entryIDs); err != nil {
 		// Log but don't fail - Redis cache clearing is not critical
 		fmt.Printf("Warning: failed to clear Redis cache for user %s: %v\n", userUID, err)
 	}
 
-	// Step 7: Delete Firebase user
+	// Step 8: Delete Firebase user
 	if err := h.deleteFirebaseUser(ctx, userUID); err != nil {
 		return fmt.Errorf("failed to delete Firebase user: %w", err)
 	}
@@ -140,6 +146,11 @@ func (h *AuthHandler) deleteEntryRelatedData(ctx context.Context, tx pgx.Tx, ent
 	// Delete images
 	if _, err := tx.Exec(ctx, `DELETE FROM images WHERE entry_id = $1`, entryID); err != nil {
 		return fmt.Errorf("failed to delete images: %w", err)
+	}
+
+	// Delete audio
+	if _, err := tx.Exec(ctx, `DELETE FROM audio WHERE entry_id = $1`, entryID); err != nil {
+		return fmt.Errorf("failed to delete audio: %w", err)
 	}
 
 	// Delete tags
@@ -224,6 +235,24 @@ func (h *AuthHandler) deleteUserImageFiles(userUID string) error {
 	// Remove the entire user directory and all its contents
 	if err := os.RemoveAll(userImageDir); err != nil {
 		return fmt.Errorf("failed to delete user image directory %s: %w", userImageDir, err)
+	}
+
+	return nil
+}
+
+// deleteUserAudioFiles deletes all physical audio files for a user
+func (h *AuthHandler) deleteUserAudioFiles(userUID string) error {
+	userAudioDir := filepath.Join("internal", "audio", userUID)
+
+	// Check if user audio directory exists
+	if _, err := os.Stat(userAudioDir); os.IsNotExist(err) {
+		// Directory doesn't exist, nothing to delete
+		return nil
+	}
+
+	// Remove the entire user directory and all its contents
+	if err := os.RemoveAll(userAudioDir); err != nil {
+		return fmt.Errorf("failed to delete user audio directory %s: %w", userAudioDir, err)
 	}
 
 	return nil

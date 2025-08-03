@@ -163,5 +163,23 @@ func (h *EntryHandler) fetchEntryWithDetails(ctx context.Context, entryID, userU
 		entry.Images = append(entry.Images, imageURL)
 	}
 
+	// Fetch audio
+	audioQuery := `
+		SELECT url FROM audio WHERE entry_id = $1 ORDER BY upload_order
+	`
+	audioRows, err := h.postgres.Query(ctx, audioQuery, entryID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch audio: %w", err)
+	}
+	defer audioRows.Close()
+
+	for audioRows.Next() {
+		var audioURL string
+		if err := audioRows.Scan(&audioURL); err != nil {
+			return nil, fmt.Errorf("failed to scan audio: %w", err)
+		}
+		entry.Audio = append(entry.Audio, audioURL)
+	}
+
 	return &entry, nil
 }

@@ -7,6 +7,7 @@ type Entry struct {
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
 	Images      []string  `json:"images"`
+	Audio       []string  `json:"audio"`
 	Tags        []Tag     `json:"tags"`
 	Locations   []Location  `json:"locations"`
 	CreatedAt   time.Time `json:"createdAt"`
