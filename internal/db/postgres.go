@@ -85,6 +85,19 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 		);
 	`
 
+	// User Settings table - stores user preferences and settings
+	userSettingsTable := `
+		CREATE TABLE IF NOT EXISTS user_settings (
+			uid VARCHAR(255) PRIMARY KEY REFERENCES users(uid) ON DELETE CASCADE,
+			theme_mode VARCHAR(10) DEFAULT 'light' CHECK (theme_mode IN ('light', 'dark')),
+			theme VARCHAR(20) DEFAULT 'default' CHECK (theme IN ('default', 'royal', 'sunset', 'coral', 'beach', 'rose', 'ocean')),
+			app_font VARCHAR(20) DEFAULT 'Montserrat' CHECK (app_font IN ('Montserrat', 'Bauhaus', 'PlayfairDisplay', 'Ubuntu')),
+			lang VARCHAR(5) DEFAULT 'en' CHECK (lang IN ('en', 'ar', 'de', 'es', 'fr', 'he', 'ja', 'ko', 'pt', 'ru', 'uk', 'vi', 'zh')),
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW()
+		);
+	`
+
 	// Entries table - stores journal entries
 	entriesTable := `
 		CREATE TABLE IF NOT EXISTS entries (
@@ -161,6 +174,7 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 	// Create indexes for better performance
 	indexes := []string{
 		`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`,
+		`CREATE INDEX IF NOT EXISTS idx_user_settings_uid ON user_settings(uid);`,
 		`CREATE INDEX IF NOT EXISTS idx_entries_user_uid ON entries(user_uid);`,
 		`CREATE INDEX IF NOT EXISTS idx_entries_created_at ON entries(created_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_locations_entry_id ON locations(entry_id);`,
@@ -174,7 +188,7 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 
 	// Execute table creation statements
-	tables := []string{usersTable, entriesTable, locationsTable, tagsTable, imagesTable, audioTable}
+	tables := []string{usersTable, userSettingsTable, entriesTable, locationsTable, tagsTable, imagesTable, audioTable}
 
 	for _, table := range tables {
 		if _, err := pool.Exec(ctx, table); err != nil {

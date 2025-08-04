@@ -84,30 +84,35 @@ func (h *AuthHandler) deleteAccountCompletely(ctx context.Context, userUID strin
 		return fmt.Errorf("failed to delete user entries: %w", err)
 	}
 
-	// Step 4: Delete user record from PostgreSQL
+	// Step 4: Delete user settings
+	if err := h.deleteUserSettings(ctx, tx, userUID); err != nil {
+		return fmt.Errorf("failed to delete user settings: %w", err)
+	}
+
+	// Step 5: Delete user record from PostgreSQL
 	if err := h.deleteUserRecord(ctx, tx, userUID); err != nil {
 		return fmt.Errorf("failed to delete user record: %w", err)
 	}
 
-	// Step 5: Delete all physical image files for this user
+	// Step 6: Delete all physical image files for this user
 	if err := h.deleteUserImageFiles(userUID); err != nil {
 		// Log but don't fail - file deletion is not critical for data privacy
 		fmt.Printf("Warning: failed to delete image files for user %s: %v\n", userUID, err)
 	}
 
-	// Step 6: Delete all physical audio files for this user
+	// Step 7: Delete all physical audio files for this user
 	if err := h.deleteUserAudioFiles(userUID); err != nil {
 		// Log but don't fail - file deletion is not critical for data privacy
 		fmt.Printf("Warning: failed to delete audio files for user %s: %v\n", userUID, err)
 	}
 
-	// Step 7: Clear Redis cache for this user
+	// Step 8: Clear Redis cache for this user
 	if err := h.clearUserRedisCache(ctx, userUID, entryIDs); err != nil {
 		// Log but don't fail - Redis cache clearing is not critical
 		fmt.Printf("Warning: failed to clear Redis cache for user %s: %v\n", userUID, err)
 	}
 
-	// Step 8: Delete Firebase user
+	// Step 9: Delete Firebase user
 	if err := h.deleteFirebaseUser(ctx, userUID); err != nil {
 		return fmt.Errorf("failed to delete Firebase user: %w", err)
 	}
@@ -255,5 +260,15 @@ func (h *AuthHandler) deleteUserAudioFiles(userUID string) error {
 		return fmt.Errorf("failed to delete user audio directory %s: %w", userAudioDir, err)
 	}
 
+	return nil
+}
+
+// deleteUserSettings deletes user settings from the user_settings table
+func (h *AuthHandler) deleteUserSettings(ctx context.Context, tx pgx.Tx, userUID string) error {
+	query := `DELETE FROM user_settings WHERE uid = $1`
+	_, err := tx.Exec(ctx, query, userUID)
+	if err != nil {
+		return fmt.Errorf("failed to delete user settings: %w", err)
+	}
 	return nil
 }

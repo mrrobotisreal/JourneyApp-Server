@@ -69,9 +69,9 @@ func main() {
 	{
 			auth := v1.Group("/auth")
 	{
-		auth.POST("/login", authHandler.Login)
 		auth.POST("/create-account", authHandler.CreateAccount)
 		auth.POST("/delete-account", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.DeleteAccount)
+		auth.POST("/update-settings", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.UpdateSettings)
 	}
 
 		// Protected entries routes

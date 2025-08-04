@@ -14,7 +14,7 @@ import (
 	usermodels "io.winapps.journeyapp/internal/models/account"
 )
 
-// AuthMiddleware checks custom token and sets user context
+// AuthMiddleware checks ID token and sets user context
 func AuthMiddleware(firebaseApp *firebase.App, postgres *pgxpool.Pool, redisClient *redis.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get Authorization header
@@ -41,45 +41,44 @@ func AuthMiddleware(firebaseApp *firebase.App, postgres *pgxpool.Pool, redisClie
 			return
 		}
 
-						// Validate custom token - try Redis first, then Postgres, then Firebase
 		ctx := context.Background()
-
-		// Step 1: Try to find user in Redis cache
 		var userUID string
-		iter := redisClient.Scan(ctx, 0, "user:*", 0).Iterator()
-		for iter.Next(ctx) {
-			key := iter.Val()
-			userJSON, err := redisClient.Get(ctx, key).Result()
-			if err != nil {
-				continue
-			}
 
-			var user usermodels.User
-			if err := json.Unmarshal([]byte(userJSON), &user); err != nil {
-				continue
-			}
-
-			// Check if this user has the provided token
-			if user.Token == token {
-				userUID = user.UID
-				break
+		// Step 1: Try to verify as Firebase ID token (primary method)
+		authClient, err := firebaseutil.GetAuthClient(firebaseApp)
+		if err == nil {
+			if idToken, err := authClient.VerifyIDToken(ctx, token); err == nil {
+				userUID = idToken.UID
 			}
 		}
 
-		// Step 2: If not found in Redis, try Postgres
+		// Step 2: If Firebase verification failed, try Redis cache as fallback
 		if userUID == "" {
-			query := `SELECT uid FROM users WHERE token = $1`
-			err := postgres.QueryRow(ctx, query, token).Scan(&userUID)
-			if err != nil {
-				// Step 3: If not in Postgres, verify token with Firebase as last resort
-				authClient, err := firebaseutil.GetAuthClient(firebaseApp)
-				if err == nil {
-					// Try to verify as ID token
-					if idToken, err := authClient.VerifyIDToken(ctx, token); err == nil {
-						userUID = idToken.UID
-					}
+			iter := redisClient.Scan(ctx, 0, "user:*", 0).Iterator()
+			for iter.Next(ctx) {
+				key := iter.Val()
+				userJSON, err := redisClient.Get(ctx, key).Result()
+				if err != nil {
+					continue
+				}
+
+				var user usermodels.User
+				if err := json.Unmarshal([]byte(userJSON), &user); err != nil {
+					continue
+				}
+
+				// Check if this user has the provided token
+				if user.Token == token {
+					userUID = user.UID
+					break
 				}
 			}
+		}
+
+		// Step 3: If not found in Redis, try PostgreSQL as final fallback
+		if userUID == "" {
+			query := `SELECT uid FROM users WHERE token = $1`
+			postgres.QueryRow(ctx, query, token).Scan(&userUID)
 		}
 
 		if userUID == "" {
