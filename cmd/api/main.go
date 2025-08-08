@@ -72,6 +72,7 @@ func main() {
 		auth.POST("/create-account", authHandler.CreateAccount)
 		auth.POST("/delete-account", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.DeleteAccount)
 		auth.POST("/update-settings", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.UpdateSettings)
+		auth.GET("/get-account-details", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.GetAccountDetails)
 	}
 
 		// Protected entries routes
@@ -94,6 +95,7 @@ func main() {
 			entries.POST("/get-unique-tags", entryHandler.GetUniqueTags)
 			entries.POST("/get-unique-locations", entryHandler.GetUniqueLocations)
 			entries.POST("/update-entry", entryHandler.UpdateEntry)
+			entries.DELETE("/delete-entry", entryHandler.DeleteEntry)
 		}
 	}
 

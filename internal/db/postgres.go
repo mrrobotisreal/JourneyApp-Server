@@ -80,8 +80,14 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 			provider VARCHAR(100),
 			email_verified BOOLEAN DEFAULT FALSE,
 			phone_number_verified BOOLEAN DEFAULT FALSE,
+			is_premium BOOLEAN NOT NULL DEFAULT FALSE,
+			premium_expires_at TIMESTAMP NULL,
 			created_at TIMESTAMP DEFAULT NOW(),
-			updated_at TIMESTAMP DEFAULT NOW()
+			updated_at TIMESTAMP DEFAULT NOW(),
+			CONSTRAINT users_premium_consistency CHECK (
+				(is_premium = TRUE AND premium_expires_at IS NOT NULL) OR
+				(is_premium = FALSE AND premium_expires_at IS NULL)
+			)
 		);
 	`
 
@@ -194,6 +200,18 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 		if _, err := pool.Exec(ctx, table); err != nil {
 			return fmt.Errorf("failed to create table: %w", err)
 		}
+	}
+
+	// Ensure premium columns exist on users for existing databases
+	if _, err := pool.Exec(ctx, `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN NOT NULL DEFAULT FALSE;`); err != nil {
+		return fmt.Errorf("failed to add is_premium column: %w", err)
+	}
+	if _, err := pool.Exec(ctx, `ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_expires_at TIMESTAMP NULL;`); err != nil {
+		return fmt.Errorf("failed to add premium_expires_at column: %w", err)
+	}
+	// Note: adding a CHECK constraint conditionally is version-dependent; skipping if already present
+	if _, err := pool.Exec(ctx, `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_premium_consistency') THEN ALTER TABLE users ADD CONSTRAINT users_premium_consistency CHECK ((is_premium = TRUE AND premium_expires_at IS NOT NULL) OR (is_premium = FALSE AND premium_expires_at IS NULL)); END IF; END $$;`); err != nil {
+		return fmt.Errorf("failed to add users_premium_consistency constraint: %w", err)
 	}
 
 	// Execute index creation statements
