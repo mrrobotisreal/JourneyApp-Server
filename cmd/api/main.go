@@ -73,6 +73,9 @@ func main() {
 		auth.POST("/delete-account", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.DeleteAccount)
 		auth.POST("/update-settings", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.UpdateSettings)
 		auth.GET("/get-account-details", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.GetAccountDetails)
+		auth.POST("/export-data", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.ExportData)
+		auth.GET("/export-progress", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.ExportProgress)
+		auth.GET("/download-exported-data", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.DownloadExportedData)
 	}
 
 		// Protected entries routes
