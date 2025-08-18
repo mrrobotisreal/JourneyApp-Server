@@ -4,6 +4,7 @@ import "time"
 
 type GetAccountDetailsResponse struct {
 	IDToken             string    `json:"idToken" binding:"required"`
+	StreamToken         string    `json:"streamToken" binding:"required"`
 	UID                 string    `json:"uid" binding:"required"`
 	DisplayName         string    `json:"displayName"`
 	Email               string    `json:"email" binding:"required"`

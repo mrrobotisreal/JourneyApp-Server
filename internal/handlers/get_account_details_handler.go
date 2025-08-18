@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 
 	getdetailsmodels "io.winapps.journeyapp/internal/models/get_account_details"
+	stream "github.com/GetStream/stream-chat-go/v5"
 )
 
 // GetAccountDetails returns the authenticated user's account and usage details
@@ -158,9 +160,17 @@ func (h *AuthHandler) GetAccountDetails(c *gin.Context) {
 		return
 	}
 
+	client, err := stream.NewClient(os.Getenv("STREAM_API_KEY"), os.Getenv("STREAM_API_SECRET"))
+	streamToken, err := client.CreateToken(requestedUID, time.Time{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create stream token"})
+		return
+	}
+
 	// Assemble response
 	resp := getdetailsmodels.GetAccountDetailsResponse{
 		IDToken:             idToken,
+		StreamToken:         streamToken,
 		UID:                 requestedUID,
 		DisplayName:         displayName,
 		Email:               email,
