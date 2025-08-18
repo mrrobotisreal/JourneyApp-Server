@@ -125,7 +125,7 @@ func (h *AuthHandler) CreateAccount(c *gin.Context) {
 		Success: true,
 		Message: "Account created successfully",
 		UID:     user.UID,
-		StreamToken: user.StreamToken,
+		StreamToken: streamToken,
 	}
 
 	c.JSON(http.StatusCreated, response)
