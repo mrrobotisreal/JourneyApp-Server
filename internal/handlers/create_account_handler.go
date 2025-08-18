@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"time"
 
 	firebase "firebase.google.com/go/v4"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	stream "github.com/GetStream/stream-chat-go/v5"
 
 	firebaseutil "io.winapps.journeyapp/internal/firebase"
 	createmodels "io.winapps.journeyapp/internal/models/create_account"
@@ -59,6 +61,13 @@ func (h *AuthHandler) CreateAccount(c *gin.Context) {
 		return
 	}
 
+	client, err := stream.NewClient(os.Getenv("STREAM_API_KEY"), os.Getenv("STREAM_API_SECRET"))
+	streamToken, err := client.CreateToken(req.UID, time.Time{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create stream token"})
+		return
+	}
+
 	// Check if user already exists in our database
 	existingUser, _ := h.getUserFromDatabase(ctx, req.UID)
 	if existingUser != nil {
@@ -66,6 +75,7 @@ func (h *AuthHandler) CreateAccount(c *gin.Context) {
 			Success: false,
 			Message: "User already exists",
 			UID:     req.UID,
+			StreamToken: streamToken,
 		}
 		c.JSON(http.StatusConflict, response)
 		return
@@ -81,6 +91,7 @@ func (h *AuthHandler) CreateAccount(c *gin.Context) {
 		PhoneNumber:         req.PhoneNumber,
 		EmailVerified:       req.EmailVerified,
 		PhoneNumberVerified: req.PhoneNumberVerified,
+		StreamToken:         streamToken,
 	}
 
 	// Store user in Redis for session management
@@ -114,6 +125,7 @@ func (h *AuthHandler) CreateAccount(c *gin.Context) {
 		Success: true,
 		Message: "Account created successfully",
 		UID:     user.UID,
+		StreamToken: user.StreamToken,
 	}
 
 	c.JSON(http.StatusCreated, response)
