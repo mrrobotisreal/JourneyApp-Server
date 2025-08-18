@@ -91,7 +91,6 @@ func (h *AuthHandler) CreateAccount(c *gin.Context) {
 		PhoneNumber:         req.PhoneNumber,
 		EmailVerified:       req.EmailVerified,
 		PhoneNumberVerified: req.PhoneNumberVerified,
-		StreamToken:         streamToken,
 	}
 
 	// Store user in Redis for session management
