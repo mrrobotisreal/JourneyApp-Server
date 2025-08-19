@@ -78,6 +78,16 @@ func main() {
 		auth.GET("/download-exported-data", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.DownloadExportedData)
 	}
 
+		// Notifications routes
+		notificationsHandler := handlers.NewNotificationsHandler(firebaseApp, postgresDB, redisClient)
+		notifications := v1.Group("/notifications")
+		notifications.Use(middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient))
+		{
+			notifications.POST("/register-for-notifications", notificationsHandler.RegisterPushToken)
+			notifications.POST("/stream-chat-webhook", notificationsHandler.HandleStreamChatWebhook)
+			notifications.GET("/get-notification-stats", notificationsHandler.GetNotificationStats)
+		}
+
 		// Protected entries routes
 		entries := v1.Group("/entries")
 		entries.Use(middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient))

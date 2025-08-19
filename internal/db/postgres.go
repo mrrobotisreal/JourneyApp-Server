@@ -177,6 +177,32 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 		);
 	`
 
+	// Push tokens - stores device push registration
+	pushTokensTable := `
+		CREATE TABLE IF NOT EXISTS push_tokens (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id VARCHAR(255) NOT NULL,
+			expo_push_token TEXT NOT NULL,
+			fcm_token TEXT,
+			platform VARCHAR(20) NOT NULL,
+			timezone VARCHAR(50) NOT NULL DEFAULT 'UTC',
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+			active BOOLEAN DEFAULT TRUE,
+			UNIQUE(user_id)
+		);
+	`
+
+	// Daily prompts - stores generated/selected prompts by date
+	dailyPromptsTable := `
+		CREATE TABLE IF NOT EXISTS daily_prompts (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			prompt TEXT NOT NULL,
+			date DATE NOT NULL UNIQUE,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+		);
+	`
+
 	// Create indexes for better performance
 	indexes := []string{
 		`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`,
@@ -191,10 +217,14 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 		`CREATE INDEX IF NOT EXISTS idx_images_upload_order ON images(entry_id, upload_order);`,
 		`CREATE INDEX IF NOT EXISTS idx_audio_entry_id ON audio(entry_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_audio_upload_order ON audio(entry_id, upload_order);`,
+		`CREATE INDEX IF NOT EXISTS idx_push_tokens_user_id ON push_tokens(user_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_push_tokens_active ON push_tokens(active);`,
+		`CREATE INDEX IF NOT EXISTS idx_push_tokens_timezone ON push_tokens(timezone);`,
+		`CREATE INDEX IF NOT EXISTS idx_daily_prompts_date ON daily_prompts(date);`,
 	}
 
 	// Execute table creation statements
-	tables := []string{usersTable, userSettingsTable, entriesTable, locationsTable, tagsTable, imagesTable, audioTable}
+	tables := []string{usersTable, userSettingsTable, entriesTable, locationsTable, tagsTable, imagesTable, audioTable, pushTokensTable, dailyPromptsTable}
 
 	for _, table := range tables {
 		if _, err := pool.Exec(ctx, table); err != nil {
