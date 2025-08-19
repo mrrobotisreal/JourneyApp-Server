@@ -73,11 +73,11 @@ func (h *AuthHandler) CreateAccount(c *gin.Context) {
 	if existingUser != nil {
 		response := createmodels.CreateUserResponse{
 			Success: false,
-			Message: "User already exists",
+			Message: "User already exists, sending stream token and uid",
 			UID:     req.UID,
 			StreamToken: streamToken,
 		}
-		c.JSON(http.StatusConflict, response)
+		c.JSON(http.StatusOK, response)
 		return
 	}
 
