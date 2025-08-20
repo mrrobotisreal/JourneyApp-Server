@@ -69,7 +69,7 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 	usersTable := `
 		CREATE TABLE IF NOT EXISTS users (
 			uid VARCHAR(255) PRIMARY KEY,
-			display_name VARCHAR(255),
+			display_name VARCHAR(255) UNIQUE NOT NULL,
 			email VARCHAR(255) UNIQUE NOT NULL,
 			token TEXT,
 			photo_url TEXT,
@@ -206,6 +206,7 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 	// Create indexes for better performance
 	indexes := []string{
 		`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`,
+		`CREATE INDEX IF NOT EXISTS idx_users_display_name ON users(display_name);`,
 		`CREATE INDEX IF NOT EXISTS idx_user_settings_uid ON user_settings(uid);`,
 		`CREATE INDEX IF NOT EXISTS idx_entries_user_uid ON entries(user_uid);`,
 		`CREATE INDEX IF NOT EXISTS idx_entries_created_at ON entries(created_at DESC);`,

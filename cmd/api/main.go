@@ -70,6 +70,7 @@ func main() {
 			auth := v1.Group("/auth")
 	{
 		auth.POST("/create-account", authHandler.CreateAccount)
+		auth.POST("/validate-display-name", authHandler.ValidateDisplayName)
 		auth.POST("/delete-account", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.DeleteAccount)
 		auth.POST("/update-settings", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.UpdateSettings)
 		auth.GET("/get-account-details", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.GetAccountDetails)
