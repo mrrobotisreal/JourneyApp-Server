@@ -167,6 +167,9 @@ func (h *AuthHandler) GetAccountDetails(c *gin.Context) {
 		return
 	}
 
+	// Ensure user is a member of public channels (idempotent)
+	addUserToPublicChannels(ctx, client, requestedUID)
+
 	// Assemble response
 	resp := getdetailsmodels.GetAccountDetailsResponse{
 		IDToken:             idToken,

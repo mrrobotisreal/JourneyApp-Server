@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -17,6 +18,27 @@ import (
 	createmodels "io.winapps.journeyapp/internal/models/create_account"
 	usermodels "io.winapps.journeyapp/internal/models/account"
 )
+
+// Public channels to auto-join for every user
+var publicChannelIDs = []string{
+	"general",
+	"wellness",
+	"motivation",
+	"mindfulness",
+	"goals",
+	"books",
+	"creativity",
+	"tech-tips",
+}
+
+func addUserToPublicChannels(ctx context.Context, client *stream.Client, uid string) {
+	for _, channelID := range publicChannelIDs {
+		ch := client.Channel("livestream", channelID)
+		if _, err := ch.AddMembers(ctx, []string{uid}, nil, nil); err != nil {
+			log.Printf("Failed adding user %s to channel %s: %v", uid, channelID, err)
+		}
+	}
+}
 
 type AuthHandler struct {
 	firebaseApp *firebase.App
@@ -118,6 +140,9 @@ func (h *AuthHandler) CreateAccount(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user settings"})
 		return
 	}
+
+	// Add user to public channels (server-side membership)
+	addUserToPublicChannels(ctx, client, user.UID)
 
 	// Create success response
 	response := createmodels.CreateUserResponse{
