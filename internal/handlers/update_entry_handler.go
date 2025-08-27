@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -42,15 +43,15 @@ func (h *EntryHandler) UpdateEntry(c *gin.Context) {
 	}
 
 	// At least one field must be provided for update
-	if req.Title == "" && req.Description == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "At least title or description must be provided"})
+	if req.Title == "" && req.Description == "" && req.Visibility == "" && len(req.SharedWith) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "At least one field must be provided"})
 		return
 	}
 
 	ctx := context.Background()
 
 	// Update the entry
-	updatedEntry, err := h.updateEntryFields(ctx, req.EntryID, userUID, req.Title, req.Description)
+	updatedEntry, err := h.updateEntryFields(ctx, req.EntryID, userUID, req.Title, req.Description, req.Visibility, req.SharedWith)
 	if err != nil {
 		if err.Error() == "entry not found" {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Entry not found or access denied"})
@@ -64,7 +65,7 @@ func (h *EntryHandler) UpdateEntry(c *gin.Context) {
 }
 
 // updateEntryFields updates the entry title and/or description in the database
-func (h *EntryHandler) updateEntryFields(ctx context.Context, entryID, userUID, title, description string) (*updateentrymodels.UpdateEntryResponse, error) {
+func (h *EntryHandler) updateEntryFields(ctx context.Context, entryID, userUID, title, description, visibility string, sharedWith []string) (*updateentrymodels.UpdateEntryResponse, error) {
 	// Start transaction
 	tx, err := h.postgres.Begin(ctx)
 	if err != nil {
@@ -77,7 +78,7 @@ func (h *EntryHandler) updateEntryFields(ctx context.Context, entryID, userUID, 
 	args := []interface{}{}
 	argCounter := 1
 
-		if title != "" {
+	if title != "" {
 		updateFields = append(updateFields, "title = $"+strconv.Itoa(argCounter))
 		args = append(args, title)
 		argCounter++
@@ -86,6 +87,19 @@ func (h *EntryHandler) updateEntryFields(ctx context.Context, entryID, userUID, 
 	if description != "" {
 		updateFields = append(updateFields, "description = $"+strconv.Itoa(argCounter))
 		args = append(args, description)
+		argCounter++
+	}
+
+	if visibility != "" {
+		v := strings.ToLower(strings.TrimSpace(visibility))
+		switch v {
+		case "public", "semi-private", "private":
+			// ok
+		default:
+			return nil, fmt.Errorf("invalid visibility")
+		}
+		updateFields = append(updateFields, "visibility = $"+strconv.Itoa(argCounter))
+		args = append(args, v)
 		argCounter++
 	}
 
@@ -115,13 +129,127 @@ func (h *EntryHandler) updateEntryFields(ctx context.Context, entryID, userUID, 
 		return nil, fmt.Errorf("entry not found")
 	}
 
+	// Update entry_shares if visibility provided or sharedWith provided
+	if visibility != "" || sharedWith != nil {
+		// Fetch current visibility
+		var currentVisibility string
+		if err := tx.QueryRow(ctx, `SELECT visibility FROM entries WHERE id = $1 AND user_uid = $2`, entryID, userUID).Scan(&currentVisibility); err != nil {
+			return nil, err
+		}
+
+		// Determine effective visibility after update
+		effectiveVisibility := currentVisibility
+		if visibility != "" {
+			effectiveVisibility = strings.ToLower(strings.TrimSpace(visibility))
+		}
+
+		// Clear shares if visibility is not semi-private
+		if effectiveVisibility != "semi-private" {
+			if _, err := tx.Exec(ctx, `DELETE FROM entry_shares WHERE entry_id = $1`, entryID); err != nil {
+				return nil, err
+			}
+		} else {
+			// Upsert shares to match provided list (if provided), else keep existing
+			if sharedWith != nil {
+				// Replace with provided
+				if _, err := tx.Exec(ctx, `DELETE FROM entry_shares WHERE entry_id = $1`, entryID); err != nil {
+					return nil, err
+				}
+				seen := make(map[string]struct{})
+				for _, sharedUID := range sharedWith {
+					sharedUID = strings.TrimSpace(sharedUID)
+					if sharedUID == "" {
+						continue
+					}
+					if _, ok := seen[sharedUID]; ok {
+						continue
+					}
+					seen[sharedUID] = struct{}{}
+					if _, err := tx.Exec(ctx, `INSERT INTO entry_shares (entry_id, shared_user_uid, created_at) VALUES ($1, $2, $3)`, entryID, sharedUID, now); err != nil {
+						return nil, err
+					}
+				}
+			}
+		}
+	}
+
 	// Commit transaction
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 
 	// Fetch the updated entry with all its data
-	return h.fetchUpdatedEntryWithDetails(ctx, entryID, userUID)
+	updated, err := h.fetchUpdatedEntryWithDetails(ctx, entryID, userUID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update Redis cache
+	entryJSON, mErr := json.Marshal(updated)
+	if mErr == nil {
+		redisKey := fmt.Sprintf("entry:%s", entryID)
+		_ = h.redis.Set(ctx, redisKey, entryJSON, 24*time.Hour).Err()
+	}
+
+	// Maintain public/shared sets based on updated visibility
+	if visibility != "" {
+		v := strings.ToLower(strings.TrimSpace(visibility))
+		switch v {
+		case "public":
+			_ = h.redis.SAdd(ctx, "public_entries", entryID).Err()
+			ownerKey := fmt.Sprintf("public_entries_by_user:%s", userUID)
+			_ = h.redis.SAdd(ctx, ownerKey, entryID).Err()
+		case "semi-private":
+			_ = h.redis.SRem(ctx, "public_entries", entryID).Err()
+			ownerKey := fmt.Sprintf("public_entries_by_user:%s", userUID)
+			_ = h.redis.SRem(ctx, ownerKey, entryID).Err()
+		case "private":
+			_ = h.redis.SRem(ctx, "public_entries", entryID).Err()
+			ownerKey := fmt.Sprintf("public_entries_by_user:%s", userUID)
+			_ = h.redis.SRem(ctx, ownerKey, entryID).Err()
+		}
+	}
+
+	// Update shared sets if provided or visibility moved away from semi-private
+	entrySharesKey := fmt.Sprintf("entry_shares:%s", entryID)
+	if visibility != "" && strings.ToLower(strings.TrimSpace(visibility)) != "semi-private" {
+		// clear all share cache
+		members, _ := h.redis.SMembers(ctx, entrySharesKey).Result()
+		for _, m := range members {
+			userSharedKey := fmt.Sprintf("shared_entries:%s", m)
+			_ = h.redis.SRem(ctx, userSharedKey, entryID).Err()
+		}
+		_ = h.redis.Del(ctx, entrySharesKey).Err()
+	} else if sharedWith != nil {
+		// replace membership
+		oldMembers, _ := h.redis.SMembers(ctx, entrySharesKey).Result()
+		oldSet := make(map[string]struct{})
+		for _, om := range oldMembers { oldSet[om] = struct{}{} }
+		newSet := make(map[string]struct{})
+		for _, sw := range sharedWith {
+			sw = strings.TrimSpace(sw)
+			if sw == "" { continue }
+			newSet[sw] = struct{}{}
+		}
+		// removals
+		for om := range oldSet {
+			if _, ok := newSet[om]; !ok {
+				userSharedKey := fmt.Sprintf("shared_entries:%s", om)
+				_ = h.redis.SRem(ctx, userSharedKey, entryID).Err()
+				_ = h.redis.SRem(ctx, entrySharesKey, om).Err()
+			}
+		}
+		// additions
+		for sw := range newSet {
+			if _, ok := oldSet[sw]; !ok {
+				userSharedKey := fmt.Sprintf("shared_entries:%s", sw)
+				_ = h.redis.SAdd(ctx, userSharedKey, entryID).Err()
+				_ = h.redis.SAdd(ctx, entrySharesKey, sw).Err()
+			}
+		}
+	}
+
+	return updated, nil
 }
 
 // fetchUpdatedEntryWithDetails retrieves the updated entry with all its related data
@@ -129,7 +257,7 @@ func (h *EntryHandler) fetchUpdatedEntryWithDetails(ctx context.Context, entryID
 	// Get the basic entry information
 	var entry updateentrymodels.UpdateEntryResponse
 	entryQuery := `
-		SELECT id, title, description, created_at, updated_at
+		SELECT id, title, description, visibility, created_at, updated_at
 		FROM entries
 		WHERE id = $1 AND user_uid = $2
 	`
@@ -137,6 +265,7 @@ func (h *EntryHandler) fetchUpdatedEntryWithDetails(ctx context.Context, entryID
 		&entry.ID,
 		&entry.Title,
 		&entry.Description,
+		&entry.Visibility,
 		&entry.CreatedAt,
 		&entry.UpdatedAt,
 	)

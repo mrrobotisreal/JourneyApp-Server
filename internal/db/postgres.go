@@ -111,6 +111,7 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 			user_uid VARCHAR(255) NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
 			title VARCHAR(500) NOT NULL,
 			description TEXT,
+			visibility VARCHAR(20) NOT NULL DEFAULT 'private' CHECK (visibility IN ('private','semi-private','public')),
 			created_at TIMESTAMP DEFAULT NOW(),
 			updated_at TIMESTAMP DEFAULT NOW()
 		);
@@ -177,6 +178,28 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 		);
 	`
 
+	// Entry shares - stores which users can access semi-private entries
+	entrySharesTable := `
+		CREATE TABLE IF NOT EXISTS entry_shares (
+			entry_id UUID NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+			shared_user_uid VARCHAR(255) NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+			created_at TIMESTAMP DEFAULT NOW(),
+			PRIMARY KEY (entry_id, shared_user_uid)
+		);
+	`
+
+	// Friendships - stores friendships between users
+	friendshipsTable := `
+		CREATE TABLE IF NOT EXISTS friendships (
+			uid VARCHAR(255) NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+			fid VARCHAR(255) NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+			status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','blocked')),
+			created_at TIMESTAMP DEFAULT NOW(),
+			PRIMARY KEY (uid, fid),
+			CHECK (uid <> fid)
+		);
+	`
+
 	// Push tokens - stores device push registration
 	pushTokensTable := `
 		CREATE TABLE IF NOT EXISTS push_tokens (
@@ -210,6 +233,7 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 		`CREATE INDEX IF NOT EXISTS idx_user_settings_uid ON user_settings(uid);`,
 		`CREATE INDEX IF NOT EXISTS idx_entries_user_uid ON entries(user_uid);`,
 		`CREATE INDEX IF NOT EXISTS idx_entries_created_at ON entries(created_at DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_entries_visibility ON entries(visibility);`,
 		`CREATE INDEX IF NOT EXISTS idx_locations_entry_id ON locations(entry_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_locations_coords ON locations(latitude, longitude);`,
 		`CREATE INDEX IF NOT EXISTS idx_tags_entry_id ON tags(entry_id);`,
@@ -222,10 +246,15 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 		`CREATE INDEX IF NOT EXISTS idx_push_tokens_active ON push_tokens(active);`,
 		`CREATE INDEX IF NOT EXISTS idx_push_tokens_timezone ON push_tokens(timezone);`,
 		`CREATE INDEX IF NOT EXISTS idx_daily_prompts_date ON daily_prompts(date);`,
+		`CREATE INDEX IF NOT EXISTS idx_entry_shares_user_uid ON entry_shares(shared_user_uid);`,
+		`CREATE INDEX IF NOT EXISTS idx_entry_shares_entry_id ON entry_shares(entry_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_friendships_uid ON friendships(uid);`,
+		`CREATE INDEX IF NOT EXISTS idx_friendships_fid ON friendships(fid);`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_friendships_unique_pair ON friendships (LEAST(uid, fid), GREATEST(uid, fid));`,
 	}
 
 	// Execute table creation statements
-	tables := []string{usersTable, userSettingsTable, entriesTable, locationsTable, tagsTable, imagesTable, audioTable, pushTokensTable, dailyPromptsTable}
+	tables := []string{usersTable, userSettingsTable, entriesTable, locationsTable, tagsTable, imagesTable, audioTable, entrySharesTable, friendshipsTable, pushTokensTable, dailyPromptsTable}
 
 	for _, table := range tables {
 		if _, err := pool.Exec(ctx, table); err != nil {
@@ -243,6 +272,22 @@ func createTables(ctx context.Context, pool *pgxpool.Pool) error {
 	// Note: adding a CHECK constraint conditionally is version-dependent; skipping if already present
 	if _, err := pool.Exec(ctx, `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_premium_consistency') THEN ALTER TABLE users ADD CONSTRAINT users_premium_consistency CHECK ((is_premium = TRUE AND premium_expires_at IS NOT NULL) OR (is_premium = FALSE AND premium_expires_at IS NULL)); END IF; END $$;`); err != nil {
 		return fmt.Errorf("failed to add users_premium_consistency constraint: %w", err)
+	}
+
+	// Ensure visibility exists on entries for existing databases
+	if _, err := pool.Exec(ctx, `ALTER TABLE entries ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'private';`); err != nil {
+		return fmt.Errorf("failed to add visibility column: %w", err)
+	}
+	if _, err := pool.Exec(ctx, `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'entries_visibility_check') THEN ALTER TABLE entries ADD CONSTRAINT entries_visibility_check CHECK (visibility IN ('private','semi-private','public')); END IF; END $$;`); err != nil {
+		return fmt.Errorf("failed to add entries_visibility_check constraint: %w", err)
+	}
+
+	// Ensure status exists on friendships for existing databases
+	if _, err := pool.Exec(ctx, `ALTER TABLE friendships ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'pending';`); err != nil {
+		return fmt.Errorf("failed to add friendships.status column: %w", err)
+	}
+	if _, err := pool.Exec(ctx, `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'friendships_status_check') THEN ALTER TABLE friendships ADD CONSTRAINT friendships_status_check CHECK (status IN ('pending','approved','rejected','blocked')); END IF; END $$;`); err != nil {
+		return fmt.Errorf("failed to add friendships_status_check constraint: %w", err)
 	}
 
 	// Execute index creation statements

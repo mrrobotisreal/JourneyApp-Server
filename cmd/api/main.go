@@ -63,21 +63,22 @@ func main() {
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(firebaseApp, postgresDB, redisClient)
 	entryHandler := handlers.NewEntryHandler(firebaseApp, postgresDB, redisClient)
+	usersHandler := handlers.NewUsersHandler(firebaseApp, postgresDB, redisClient)
 
 	// Define routes
 	v1 := router.Group("/api/v1")
 	{
-			auth := v1.Group("/auth")
-	{
-		auth.POST("/create-account", authHandler.CreateAccount)
-		auth.POST("/validate-display-name", authHandler.ValidateDisplayName)
-		auth.POST("/delete-account", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.DeleteAccount)
-		auth.POST("/update-settings", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.UpdateSettings)
-		auth.GET("/get-account-details", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.GetAccountDetails)
-		auth.POST("/export-data", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.ExportData)
-		auth.GET("/export-progress", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.ExportProgress)
-		auth.GET("/download-exported-data", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.DownloadExportedData)
-	}
+		auth := v1.Group("/auth")
+		{
+			auth.POST("/create-account", authHandler.CreateAccount)
+			auth.POST("/validate-display-name", authHandler.ValidateDisplayName)
+			auth.POST("/delete-account", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.DeleteAccount)
+			auth.POST("/update-settings", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.UpdateSettings)
+			auth.GET("/get-account-details", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.GetAccountDetails)
+			auth.POST("/export-data", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.ExportData)
+			auth.GET("/export-progress", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.ExportProgress)
+			auth.GET("/download-exported-data", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.DownloadExportedData)
+		}
 
 		// Notifications routes
 		notificationsHandler := handlers.NewNotificationsHandler(firebaseApp, postgresDB, redisClient)
@@ -110,6 +111,18 @@ func main() {
 			entries.POST("/get-unique-locations", entryHandler.GetUniqueLocations)
 			entries.POST("/update-entry", entryHandler.UpdateEntry)
 			entries.DELETE("/delete-entry", entryHandler.DeleteEntry)
+		}
+
+		// Protected users routes
+		users := v1.Group("/users")
+		users.Use(middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient))
+		{
+			users.GET("/search-users", usersHandler.SearchUsers)
+			users.GET("/list-friends", usersHandler.ListFriends)
+			users.POST("/add-friend", usersHandler.AddFriendship)
+			users.POST("/approve-friend-request", usersHandler.ApproveFriendRequest)
+			users.POST("/reject-friend-request", usersHandler.RejectFriendRequest)
+			users.DELETE("/remove-friend", usersHandler.RemoveFriendship)
 		}
 	}
 

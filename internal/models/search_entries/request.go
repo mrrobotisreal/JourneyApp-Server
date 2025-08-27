@@ -18,6 +18,7 @@ type SearchFilters struct {
 	SortRule  string                     `json:"sortRule,omitempty"`    // "Newest" (default) or "Oldest"
 	Locations []accountmodels.Location   `json:"locations,omitempty"`
 	Tags      []accountmodels.Tag        `json:"tags,omitempty"`
+	Visibilities []string                `json:"visibilities,omitempty"`
 }
 
 type TimeframeFilter struct {

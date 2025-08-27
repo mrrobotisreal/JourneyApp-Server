@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -75,21 +76,47 @@ func (h *EntryHandler) GetEntry(c *gin.Context) {
 
 // fetchEntryWithDetails retrieves an entry with all its related data
 func (h *EntryHandler) fetchEntryWithDetails(ctx context.Context, entryID, userUID string) (*getentrymodels.GetEntryResponse, error) {
-	// First, get the basic entry information
+	// First, get the basic entry information and check visibility
 	var entry getentrymodels.GetEntryResponse
+	var ownerUID string
+	var visibility string
 	entryQuery := `
-		SELECT id, title, description, created_at, updated_at
+		SELECT id, title, description, visibility, user_uid, created_at, updated_at
 		FROM entries
-		WHERE id = $1 AND user_uid = $2
+		WHERE id = $1
 	`
-	err := h.postgres.QueryRow(ctx, entryQuery, entryID, userUID).Scan(
+	err := h.postgres.QueryRow(ctx, entryQuery, entryID).Scan(
 		&entry.ID,
 		&entry.Title,
 		&entry.Description,
+		&visibility,
+		&ownerUID,
 		&entry.CreatedAt,
 		&entry.UpdatedAt,
 	)
 	if err != nil {
+		return nil, fmt.Errorf("entry not found")
+	}
+
+	entry.Visibility = visibility
+
+	// Enforce access rules
+	v := strings.ToLower(strings.TrimSpace(visibility))
+	switch v {
+	case "private":
+		if userUID != ownerUID {
+			return nil, fmt.Errorf("entry not found")
+		}
+	case "semi-private":
+		if userUID != ownerUID {
+			var allowed int
+			if err := h.postgres.QueryRow(ctx, `SELECT 1 FROM entry_shares WHERE entry_id = $1 AND shared_user_uid = $2`, entryID, userUID).Scan(&allowed); err != nil {
+				return nil, fmt.Errorf("entry not found")
+			}
+		}
+	case "public":
+		// anyone can view
+	default:
 		return nil, fmt.Errorf("entry not found")
 	}
 

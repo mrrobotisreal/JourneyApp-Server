@@ -11,4 +11,6 @@ type CreateEntryRequest struct {
 	Tags        []accountmodels.Tag     `json:"tags"`
 	Locations   []accountmodels.Location  `json:"locations"`
 	Images      []string  `json:"images"`
+	Visibility  string    `json:"visibility,omitempty"`
+	SharedWith  []string  `json:"sharedWith,omitempty"`
 }

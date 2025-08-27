@@ -19,6 +19,7 @@ type EntryResult struct {
 	Audio       []string                    `json:"audio"`
 	Tags        []accountmodels.Tag         `json:"tags"`
 	Locations   []accountmodels.Location    `json:"locations"`
+	Visibility  string                      `json:"visibility"`
 	CreatedAt   time.Time                   `json:"createdAt"`
 	UpdatedAt   time.Time                   `json:"updatedAt"`
 }

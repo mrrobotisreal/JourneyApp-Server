@@ -94,8 +94,8 @@ func (h *EntryHandler) SearchEntries(c *gin.Context) {
 
 // searchEntriesWithFilters performs the actual search with all filters and returns entries
 func (h *EntryHandler) searchEntriesWithFilters(ctx context.Context, userUID string, req searchmodels.SearchEntriesRequest) ([]searchmodels.EntryResult, int, error) {
-	// Build WHERE clause
-	whereConditions := []string{"e.user_uid = $1"}
+	// Build WHERE clause to include visibility access
+	whereConditions := []string{"(e.user_uid = $1 OR e.visibility = 'public' OR EXISTS (SELECT 1 FROM entry_shares es WHERE es.entry_id = e.id AND es.shared_user_uid = $1))"}
 	args := []interface{}{userUID}
 	argCounter := 2
 
@@ -107,6 +107,17 @@ func (h *EntryHandler) searchEntriesWithFilters(ctx context.Context, userUID str
 			args = append(args, timeArgs...)
 			argCounter += len(timeArgs)
 		}
+	}
+
+	// Add visibility filter if provided
+	if len(req.Filters.Visibilities) > 0 {
+		visPlaceholders := []string{}
+		for _, v := range req.Filters.Visibilities {
+			visPlaceholders = append(visPlaceholders, fmt.Sprintf("$%d", argCounter))
+			args = append(args, strings.ToLower(strings.TrimSpace(v)))
+			argCounter++
+		}
+		whereConditions = append(whereConditions, fmt.Sprintf("e.visibility IN (%s)", strings.Join(visPlaceholders, ",")))
 	}
 
 	// Add search query filter
@@ -180,7 +191,7 @@ func (h *EntryHandler) searchEntriesWithFilters(ctx context.Context, userUID str
 
 	// Get entries
 	entriesQuery := fmt.Sprintf(`
-		SELECT DISTINCT e.id, e.title, e.description, e.created_at, e.updated_at
+		SELECT DISTINCT e.id, e.title, e.description, e.visibility, e.created_at, e.updated_at
 		FROM entries e
 		%s
 		%s
@@ -201,7 +212,7 @@ func (h *EntryHandler) searchEntriesWithFilters(ctx context.Context, userUID str
 
 	for rows.Next() {
 		var entry searchmodels.EntryResult
-		if err := rows.Scan(&entry.ID, &entry.Title, &entry.Description, &entry.CreatedAt, &entry.UpdatedAt); err != nil {
+		if err := rows.Scan(&entry.ID, &entry.Title, &entry.Description, &entry.Visibility, &entry.CreatedAt, &entry.UpdatedAt); err != nil {
 			return nil, 0, fmt.Errorf("failed to scan entry: %w", err)
 		}
 

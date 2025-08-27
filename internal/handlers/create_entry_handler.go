@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	firebase "firebase.google.com/go/v4"
@@ -59,6 +60,15 @@ func (h *EntryHandler) CreateEntry(c *gin.Context) {
 		return
 	}
 
+	// Determine visibility (default private)
+	visibility := strings.ToLower(strings.TrimSpace(req.Visibility))
+	switch visibility {
+	case "public", "semi-private", "private":
+		// ok
+	default:
+		visibility = "private"
+	}
+
 	ctx := context.Background()
 
 	// Generate new entry ID
@@ -73,6 +83,7 @@ func (h *EntryHandler) CreateEntry(c *gin.Context) {
 		Images:      req.Images,
 		Tags:        req.Tags,
 		Locations:   req.Locations,
+		Visibility:  visibility,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -87,13 +98,36 @@ func (h *EntryHandler) CreateEntry(c *gin.Context) {
 
 	// Insert entry into PostgreSQL
 	entryQuery := `
-		INSERT INTO entries (id, user_uid, title, description, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO entries (id, user_uid, title, description, visibility, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
-	_, err = tx.Exec(ctx, entryQuery, entryID, userUID, req.Title, req.Description, now, now)
+	_, err = tx.Exec(ctx, entryQuery, entryID, userUID, req.Title, req.Description, visibility, now, now)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create entry"})
 		return
+	}
+
+	// Insert entry shares if semi-private
+	if visibility == "semi-private" && len(req.SharedWith) > 0 {
+		seen := make(map[string]struct{})
+		for _, sharedUID := range req.SharedWith {
+			sharedUID = strings.TrimSpace(sharedUID)
+			if sharedUID == "" {
+				continue
+			}
+			if _, ok := seen[sharedUID]; ok {
+				continue
+			}
+			seen[sharedUID] = struct{}{}
+			shareQuery := `
+				INSERT INTO entry_shares (entry_id, shared_user_uid, created_at)
+				VALUES ($1, $2, $3)
+			`
+			if _, err := tx.Exec(ctx, shareQuery, entryID, sharedUID, now); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save shared users"})
+				return
+			}
+		}
 	}
 
 	// Insert locations if provided
@@ -178,6 +212,35 @@ func (h *EntryHandler) CreateEntry(c *gin.Context) {
 		}
 		// Set expiration for user entries list
 		h.redis.Expire(ctx, userEntriesKey, 24*time.Hour)
+
+		// Maintain public entries sets
+		if visibility == "public" {
+			if err := h.redis.SAdd(ctx, "public_entries", entryID).Err(); err != nil {
+				fmt.Printf("Failed to update public entries set: %v\n", err)
+			}
+			h.redis.Expire(ctx, "public_entries", 24*time.Hour)
+			byUserKey := fmt.Sprintf("public_entries_by_user:%s", userUID)
+			if err := h.redis.SAdd(ctx, byUserKey, entryID).Err(); err != nil {
+				fmt.Printf("Failed to update public entries by user set: %v\n", err)
+			}
+			h.redis.Expire(ctx, byUserKey, 24*time.Hour)
+		}
+
+		// Maintain shared entries sets
+		if visibility == "semi-private" && len(req.SharedWith) > 0 {
+			entrySharesKey := fmt.Sprintf("entry_shares:%s", entryID)
+			for _, sharedUID := range req.SharedWith {
+				sharedUID = strings.TrimSpace(sharedUID)
+				if sharedUID == "" {
+					continue
+				}
+				_ = h.redis.SAdd(ctx, entrySharesKey, sharedUID).Err()
+				userSharedKey := fmt.Sprintf("shared_entries:%s", sharedUID)
+				_ = h.redis.SAdd(ctx, userSharedKey, entryID).Err()
+				_ = h.redis.Expire(ctx, userSharedKey, 24*time.Hour).Err()
+			}
+			_ = h.redis.Expire(ctx, entrySharesKey, 24*time.Hour).Err()
+		}
 	}
 
 	// Create response
@@ -188,6 +251,7 @@ func (h *EntryHandler) CreateEntry(c *gin.Context) {
 		Images:      req.Images,
 		Tags:        req.Tags,
 		Locations:   req.Locations,
+		Visibility:  visibility,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}

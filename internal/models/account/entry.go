@@ -10,6 +10,7 @@ type Entry struct {
 	Audio       []string  `json:"audio"`
 	Tags        []Tag     `json:"tags"`
 	Locations   []Location  `json:"locations"`
+	Visibility  string    `json:"visibility"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
