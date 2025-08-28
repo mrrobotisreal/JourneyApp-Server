@@ -23,6 +23,7 @@ func main() {
 		_ = godotenv.Load(".env", "../.env", "../../.env", "JourneyAppServer/.env", "cmd/api/.env")
 	}
 
+	log.Println("STREAM_API_KEY", os.Getenv("STREAM_API_KEY"))
 	if os.Getenv("STREAM_API_KEY") == "" || os.Getenv("STREAM_API_SECRET") == "" {
 		log.Println("Warning: STREAM_API_KEY or STREAM_API_SECRET not set. Stream-dependent endpoints will fail.")
 	}
