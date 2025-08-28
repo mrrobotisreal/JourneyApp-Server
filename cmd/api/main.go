@@ -18,9 +18,13 @@ import (
 )
 
 func main() {
-	// Load environment variables from .env file
+	// Load environment variables from .env file (try multiple locations)
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using system environment variables")
+		_ = godotenv.Load(".env", "../.env", "../../.env", "JourneyAppServer/.env", "cmd/api/.env")
+	}
+
+	if os.Getenv("STREAM_API_KEY") == "" || os.Getenv("STREAM_API_SECRET") == "" {
+		log.Println("Warning: STREAM_API_KEY or STREAM_API_SECRET not set. Stream-dependent endpoints will fail.")
 	}
 
 	// Initialize Firebase
@@ -75,6 +79,7 @@ func main() {
 			auth.POST("/delete-account", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.DeleteAccount)
 			auth.POST("/update-settings", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.UpdateSettings)
 			auth.GET("/get-account-details", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.GetAccountDetails)
+			auth.POST("/add-profile-pic", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.AddProfilePic)
 			auth.POST("/export-data", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.ExportData)
 			auth.GET("/export-progress", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.ExportProgress)
 			auth.GET("/download-exported-data", middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient), authHandler.DownloadExportedData)

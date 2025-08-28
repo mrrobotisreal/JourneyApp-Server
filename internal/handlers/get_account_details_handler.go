@@ -160,14 +160,27 @@ func (h *AuthHandler) GetAccountDetails(c *gin.Context) {
 		return
 	}
 
-	client, err := stream.NewClient(os.Getenv("STREAM_API_KEY"), os.Getenv("STREAM_API_SECRET"))
+	// Create Stream client and token (required for the app)
+	apiKey := os.Getenv("STREAM_API_KEY")
+	apiSecret := os.Getenv("STREAM_API_SECRET")
+	if apiKey == "" || apiSecret == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Stream credentials missing on server"})
+		return
+	}
+
+	client, err := stream.NewClient(apiKey, apiSecret)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initialize Stream client"})
+		return
+	}
+
 	streamToken, err := client.CreateToken(requestedUID, time.Time{})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create stream token"})
 		return
 	}
 
-	// Ensure user is a member of public channels (idempotent)
+	// Ensure user is a member of public channels (idempotent; log errors only)
 	addUserToPublicChannels(ctx, client, requestedUID)
 
 	// Assemble response

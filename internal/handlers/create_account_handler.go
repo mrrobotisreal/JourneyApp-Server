@@ -84,6 +84,10 @@ func (h *AuthHandler) CreateAccount(c *gin.Context) {
 	}
 
 	client, err := stream.NewClient(os.Getenv("STREAM_API_KEY"), os.Getenv("STREAM_API_SECRET"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initialize Stream client"})
+		return
+	}
 	streamToken, err := client.CreateToken(req.UID, time.Time{})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create stream token"})
