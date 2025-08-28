@@ -32,9 +32,17 @@ var publicChannelIDs = []string{
 }
 
 func addUserToPublicChannels(ctx context.Context, client *stream.Client, uid string) {
+	if client == nil {
+		log.Printf("Stream client is nil when adding user %s to public channels", uid)
+		return
+	}
 	for _, channelID := range publicChannelIDs {
 		ch := client.Channel("livestream", channelID)
-		if _, err := ch.AddMembers(ctx, []string{uid}, nil, nil); err != nil {
+		if ch == nil {
+			log.Printf("Stream channel is nil for id %s", channelID)
+			continue
+		}
+		if _, err := ch.AddMembers(ctx, []string{uid}); err != nil {
 			log.Printf("Failed adding user %s to channel %s: %v", uid, channelID, err)
 		}
 	}
