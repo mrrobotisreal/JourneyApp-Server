@@ -49,8 +49,7 @@ func (h *UsersHandler) GetUserDetails(c *gin.Context) {
 	// Fetch aggregate counts
 	var totalEntries int
 	countsQuery := `
-		SELECT
-			(SELECT COUNT(*) FROM entries e WHERE e.user_uid = $1) AS total_entries,
+		SELECT COUNT(*) FROM entries WHERE user_uid = $1
 	`
 	if err := h.postgres.QueryRow(ctx, countsQuery, targetUID).Scan(
 		&totalEntries,
