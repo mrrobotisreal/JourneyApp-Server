@@ -58,7 +58,7 @@ func (h *UsersHandler) SearchUsers(c *gin.Context) {
 		var uid, displayName, email, photoURL, createdAt string
 		var isPremium bool
 		if err := rows.Scan(&uid, &displayName, &email, &photoURL, &createdAt, &isPremium); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read results"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read results " + err.Error() })
 			return
 		}
 		results = append(results, searchusersmodels.SearchUserResult{
