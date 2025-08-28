@@ -117,6 +117,7 @@ func main() {
 		users := v1.Group("/users")
 		users.Use(middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient))
 		{
+			users.GET("/get-user-details", usersHandler.GetUserDetails)
 			users.GET("/search-users", usersHandler.SearchUsers)
 			users.GET("/list-friends", usersHandler.ListFriends)
 			users.POST("/add-friend", usersHandler.AddFriendship)

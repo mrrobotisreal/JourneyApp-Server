@@ -83,7 +83,7 @@ func (h *UsersHandler) ListFriends(c *gin.Context) {
 	}
 
 	query := fmt.Sprintf(`
-		SELECT u.uid, u.display_name, u.email, u.photo_url
+		SELECT u.uid, u.display_name, u.email, u.photo_url, f.status, f.created_at
 		FROM friendships f
 		JOIN users u ON u.uid = CASE WHEN f.uid = $1 THEN f.fid ELSE f.uid END
 		WHERE (f.uid = $1 OR f.fid = $1) AND f.status IN (%s)
@@ -99,8 +99,8 @@ func (h *UsersHandler) ListFriends(c *gin.Context) {
 
 	friends := make([]map[string]string, 0)
 	for rows.Next() {
-		var uid, displayName, email, photoURL string
-		if err := rows.Scan(&uid, &displayName, &email, &photoURL); err != nil {
+		var uid, displayName, email, photoURL, status, createdAt string
+		if err := rows.Scan(&uid, &displayName, &email, &photoURL, &status, &createdAt); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read results"})
 			return
 		}
@@ -109,6 +109,8 @@ func (h *UsersHandler) ListFriends(c *gin.Context) {
 			"displayName": displayName,
 			"email":       email,
 			"photoURL":    photoURL,
+			"status":      status,
+			"createdAt":   createdAt,
 		})
 	}
 

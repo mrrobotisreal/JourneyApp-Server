@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	searchusersmodels "io.winapps.journeyapp/internal/models/search_users"
 )
 
 // SearchUsers finds users by display name or email using a case-insensitive partial match
@@ -30,7 +32,7 @@ func (h *UsersHandler) SearchUsers(c *gin.Context) {
 
 	// Try Redis cache first
 	if cached, err := h.redis.Get(ctx, cacheKey).Result(); err == nil && cached != "" {
-		var cachedResponse map[string][]map[string]string
+		var cachedResponse searchusersmodels.SearchUsersResponse
 		if err := json.Unmarshal([]byte(cached), &cachedResponse); err == nil {
 			c.JSON(http.StatusOK, cachedResponse)
 			return
@@ -39,7 +41,7 @@ func (h *UsersHandler) SearchUsers(c *gin.Context) {
 
 	like := fmt.Sprintf("%%%s%%", query)
 	rows, err := h.postgres.Query(ctx, `
-		SELECT uid, display_name, email, photo_url
+		SELECT uid, display_name, email, photo_url, created_at, is_premium
 		FROM users
 		WHERE display_name ILIKE $1 OR email ILIKE $1
 		ORDER BY display_name
@@ -51,23 +53,26 @@ func (h *UsersHandler) SearchUsers(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	results := make([]map[string]string, 0)
+	results := make([]searchusersmodels.SearchUserResult, 0)
 	for rows.Next() {
-		var uid, displayName, email, photoURL string
-		if err := rows.Scan(&uid, &displayName, &email, &photoURL); err != nil {
+		var uid, displayName, email, photoURL, createdAt string
+		var isPremium bool
+		if err := rows.Scan(&uid, &displayName, &email, &photoURL, &createdAt, &isPremium); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read results"})
 			return
 		}
-		results = append(results, map[string]string{
-			"uid":          uid,
-			"displayName":  displayName,
-			"email":        email,
-			"photoURL":     photoURL,
+		results = append(results, searchusersmodels.SearchUserResult{
+			UID:          uid,
+			DisplayName:  displayName,
+			Email:        email,
+			PhotoURL:     photoURL,
+			CreatedAt:    createdAt,
+			IsPremium:    isPremium,
 		})
 	}
 
-	response := map[string]interface{}{
-		"results": results,
+	response := searchusersmodels.SearchUsersResponse{
+		Results: results,
 	}
 
 	// Cache for a short period
