@@ -107,12 +107,12 @@ func (h *UsersHandler) ListFriends(c *gin.Context) {
 			return
 		}
 		friends = append(friends, listfriendsmodels.ListFriend{
-			"uid":         uid,
-			"displayName": displayName,
-			"email":       email,
-			"photoURL":    photoURL,
-			"status":      status,
-			"createdAt":   createdAt,
+			UID:         uid,
+			DisplayName: displayName,
+			Email:       email,
+			PhotoURL:    photoURL,
+			Status:      status,
+			CreatedAt:   createdAt,
 		})
 	}
 
