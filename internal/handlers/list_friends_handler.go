@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	listfriendsmodels "io.winapps.journeyapp/internal/models/list-friends"
 )
 
 // ListFriends returns user profiles for all friends of the given uid
@@ -66,7 +67,7 @@ func (h *UsersHandler) ListFriends(c *gin.Context) {
 
 	// Try Redis cache first
 	if cached, err := h.redis.Get(ctx, cacheKey).Result(); err == nil && cached != "" {
-		var cachedResponse map[string][]map[string]string
+		var cachedResponse listfriendsmodels.ListFriendsResponse
 		if err := json.Unmarshal([]byte(cached), &cachedResponse); err == nil {
 			c.JSON(http.StatusOK, cachedResponse)
 			return
@@ -97,14 +98,15 @@ func (h *UsersHandler) ListFriends(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	friends := make([]map[string]string, 0)
+	friends := make([]listfriendsmodels.ListFriend, 0)
 	for rows.Next() {
-		var uid, displayName, email, photoURL, status, createdAt string
+		var uid, displayName, email, photoURL, status string
+		var createdAt time.Time
 		if err := rows.Scan(&uid, &displayName, &email, &photoURL, &status, &createdAt); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read results"})
 			return
 		}
-		friends = append(friends, map[string]string{
+		friends = append(friends, listfriendsmodels.ListFriend{
 			"uid":         uid,
 			"displayName": displayName,
 			"email":       email,
@@ -114,8 +116,8 @@ func (h *UsersHandler) ListFriends(c *gin.Context) {
 		})
 	}
 
-	response := map[string]interface{}{
-		"friends": friends,
+	response := listfriendsmodels.ListFriendsResponse{
+		Friends: friends,
 	}
 
 	// Cache for a short period
