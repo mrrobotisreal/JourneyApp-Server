@@ -1,11 +1,13 @@
 package models
 
+import "time"
+
 type SearchUserResult struct {
 	UID string `json:"uid"`
 	DisplayName string `json:"displayName"`
 	Email string `json:"email"`
 	PhotoURL string `json:"photoURL"`
-	CreatedAt string `json:"createdAt"`
+	CreatedAt time.Time `json:"createdAt"`
 	IsPremium bool `json:"isPremium"`
 }
 
