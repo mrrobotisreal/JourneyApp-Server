@@ -130,6 +130,7 @@ func main() {
 			users.POST("/approve-friend-request", usersHandler.ApproveFriendRequest)
 			users.POST("/reject-friend-request", usersHandler.RejectFriendRequest)
 			users.DELETE("/remove-friend", usersHandler.RemoveFriendship)
+			users.GET("/list-feeds", usersHandler.ListFeeds)
 		}
 	}
 
