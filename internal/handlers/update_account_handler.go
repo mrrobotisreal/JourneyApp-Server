@@ -19,10 +19,6 @@ import (
 
 // UpdateAccount updates user fields and optionally handles profile image upload
 func (h *AuthHandler) UpdateAccount(c *gin.Context) {
-	var req updatemodels.UpdateAccountRequest
-	// Accept JSON body if provided; it's OK if binding fails (we may be using multipart)
-	_ = c.ShouldBindJSON(&req)
-
 	// Ensure user is authenticated (middleware populates context)
 	uidCtx, exists := c.Get("uid")
 	if !exists {
@@ -35,11 +31,21 @@ func (h *AuthHandler) UpdateAccount(c *gin.Context) {
 		return
 	}
 
-	// Determine target UID
-	targetUID := strings.TrimSpace(req.UID)
-	if targetUID == "" {
-		// fallback: read from query
-		targetUID = strings.TrimSpace(c.Query("uid"))
+	ctx := context.Background()
+
+	// Parse JSON body into a raw map to detect which keys are present
+	var raw map[string]json.RawMessage
+	if strings.Contains(strings.ToLower(c.ContentType()), "application/json") {
+		_ = c.ShouldBindJSON(&raw)
+	}
+
+	// Determine target UID from JSON or query
+	targetUID := strings.TrimSpace(c.Query("uid"))
+	if b, ok := raw["uid"]; ok {
+		var uidStr string
+		if err := json.Unmarshal(b, &uidStr); err == nil && strings.TrimSpace(uidStr) != "" {
+			targetUID = strings.TrimSpace(uidStr)
+		}
 	}
 	if targetUID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing uid in request"})
@@ -50,39 +56,133 @@ func (h *AuthHandler) UpdateAccount(c *gin.Context) {
 		return
 	}
 
-	ctx := context.Background()
+	setClauses := make([]string, 0)
+	args := make([]interface{}, 0)
+	argIndex := 1
 
-	// Handle photo update logic (supports external URL, base64 data URL, or multipart file)
-	finalPhotoURL := strings.TrimSpace(req.PhotoURL)
-	if finalPhotoURL != "" {
-		// If the provided photoURL looks like base64 data, treat it as an attached image
-		if strings.HasPrefix(strings.ToLower(finalPhotoURL), "data:") || strings.Contains(finalPhotoURL, ",") {
-			relativeURL, absoluteURL, err := h.saveProfileImageToFileSystem(finalPhotoURL, targetUID)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image: " + err.Error()})
-				return
+	// displayName
+	if b, ok := raw["displayName"]; ok {
+		var v string
+		if err := json.Unmarshal(b, &v); err == nil {
+			v = strings.TrimSpace(v)
+			if v != "" {
+				setClauses = append(setClauses, fmt.Sprintf("display_name = $%d", argIndex))
+				args = append(args, v)
+				argIndex++
 			}
-
-			// Update Firebase Auth photo URL
-			authClient, err := firebaseutil.GetAuthClient(h.firebaseApp)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initialize auth client"})
-				return
-			}
-			params := (&firebaseauth.UserToUpdate{}).PhotoURL(absoluteURL)
-			if _, err := authClient.UpdateUser(ctx, targetUID, params); err != nil {
-				// Attempt cleanup on failure
-				_ = relativeURL // path already relative; best-effort cleanup handled elsewhere if needed
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update Firebase photo URL"})
-				return
-			}
-
-			finalPhotoURL = absoluteURL
 		}
-	} else {
-		// No photoURL provided; check if a multipart file is attached under key "photo"
-		fileHeader, err := c.FormFile("photo")
-		if err == nil && fileHeader != nil {
+	}
+
+	// email
+	if b, ok := raw["email"]; ok {
+		var v string
+		if err := json.Unmarshal(b, &v); err == nil {
+			v = strings.TrimSpace(v)
+			if v != "" {
+				setClauses = append(setClauses, fmt.Sprintf("email = $%d", argIndex))
+				args = append(args, v)
+				argIndex++
+			}
+		}
+	}
+
+	// phoneNumber
+	if b, ok := raw["phoneNumber"]; ok {
+		var v string
+		if err := json.Unmarshal(b, &v); err == nil {
+			v = strings.TrimSpace(v)
+			if v != "" {
+				setClauses = append(setClauses, fmt.Sprintf("phone_number = $%d", argIndex))
+				args = append(args, v)
+				argIndex++
+			}
+		}
+	}
+
+	// emailVerified
+	if b, ok := raw["emailVerified"]; ok {
+		var v bool
+		if err := json.Unmarshal(b, &v); err == nil {
+			setClauses = append(setClauses, fmt.Sprintf("email_verified = $%d", argIndex))
+			args = append(args, v)
+			argIndex++
+		}
+	}
+
+	// phoneNumberVerified
+	if b, ok := raw["phoneNumberVerified"]; ok {
+		var v bool
+		if err := json.Unmarshal(b, &v); err == nil {
+			setClauses = append(setClauses, fmt.Sprintf("phone_number_verified = $%d", argIndex))
+			args = append(args, v)
+			argIndex++
+		}
+	}
+
+	// isPremium
+	if b, ok := raw["isPremium"]; ok {
+		var v bool
+		if err := json.Unmarshal(b, &v); err == nil {
+			setClauses = append(setClauses, fmt.Sprintf("is_premium = $%d", argIndex))
+			args = append(args, v)
+			argIndex++
+		}
+	}
+
+	// premiumExpiresAt (supports explicit null)
+	if b, ok := raw["premiumExpiresAt"]; ok {
+		if strings.TrimSpace(string(b)) == "null" {
+			setClauses = append(setClauses, "premium_expires_at = NULL")
+		} else {
+			var v time.Time
+			if err := json.Unmarshal(b, &v); err == nil {
+				setClauses = append(setClauses, fmt.Sprintf("premium_expires_at = $%d", argIndex))
+				args = append(args, v)
+				argIndex++
+			}
+		}
+	}
+
+	// Photo handling (photoURL in JSON or multipart file)
+	photoWasUpdated := false
+	if b, ok := raw["photoURL"]; ok {
+		var v string
+		if err := json.Unmarshal(b, &v); err == nil {
+			v = strings.TrimSpace(v)
+			if v != "" {
+				if strings.HasPrefix(strings.ToLower(v), "data:") || strings.Contains(v, ",") {
+					_, absoluteURL, err := h.saveProfileImageToFileSystem(v, targetUID)
+					if err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image: " + err.Error()})
+						return
+					}
+					// Update Firebase Auth photo URL
+					authClient, err := firebaseutil.GetAuthClient(h.firebaseApp)
+					if err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initialize auth client"})
+						return
+					}
+					params := (&firebaseauth.UserToUpdate{}).PhotoURL(absoluteURL)
+					if _, err := authClient.UpdateUser(ctx, targetUID, params); err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update Firebase photo URL"})
+						return
+					}
+					setClauses = append(setClauses, fmt.Sprintf("photo_url = $%d", argIndex))
+					args = append(args, absoluteURL)
+					argIndex++
+					photoWasUpdated = true
+				} else {
+					setClauses = append(setClauses, fmt.Sprintf("photo_url = $%d", argIndex))
+					args = append(args, v)
+					argIndex++
+					photoWasUpdated = true
+				}
+			}
+		}
+	}
+
+	if !photoWasUpdated {
+		if fileHeader, err := c.FormFile("photo"); err == nil && fileHeader != nil {
 			file, err := fileHeader.Open()
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to open uploaded image"})
@@ -94,14 +194,12 @@ func (h *AuthHandler) UpdateAccount(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read uploaded image"})
 				return
 			}
-			// Convert to base64 (without prefix) and reuse existing saver (it can infer type)
 			base64Body := base64.StdEncoding.EncodeToString(data)
-			relativeURL, absoluteURL, err := h.saveProfileImageToFileSystem(base64Body, targetUID)
+			_, absoluteURL, err := h.saveProfileImageToFileSystem(base64Body, targetUID)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image: " + err.Error()})
 				return
 			}
-
 			// Update Firebase Auth photo URL
 			authClient, err := firebaseutil.GetAuthClient(h.firebaseApp)
 			if err != nil {
@@ -110,31 +208,27 @@ func (h *AuthHandler) UpdateAccount(c *gin.Context) {
 			}
 			params := (&firebaseauth.UserToUpdate{}).PhotoURL(absoluteURL)
 			if _, err := authClient.UpdateUser(ctx, targetUID, params); err != nil {
-				_ = relativeURL
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update Firebase photo URL"})
 				return
 			}
-
-			finalPhotoURL = absoluteURL
+			setClauses = append(setClauses, fmt.Sprintf("photo_url = $%d", argIndex))
+			args = append(args, absoluteURL)
+			argIndex++
 		}
 	}
 
-	// Update user fields in Postgres
-	updateQuery := `
+	// Always update updated_at
+	setClauses = append(setClauses, "updated_at = NOW()")
+
+	setSQL := strings.Join(setClauses, ", ")
+	updateQuery := fmt.Sprintf(`
 		UPDATE users
-		SET display_name = $2,
-		    email = $3,
-		    phone_number = $4,
-		    photo_url = $5,
-		    email_verified = $6,
-		    phone_number_verified = $7,
-		    is_premium = $8,
-		    premium_expires_at = $9,
-		    updated_at = NOW()
-		WHERE uid = $1
+		SET %s
+		WHERE uid = $%d
 		RETURNING uid, display_name, email, phone_number, photo_url,
 		          email_verified, phone_number_verified, is_premium, premium_expires_at, created_at, updated_at
-	`
+	`, setSQL, argIndex)
+	args = append(args, targetUID)
 
 	var (
 		uid string
@@ -150,19 +244,7 @@ func (h *AuthHandler) UpdateAccount(c *gin.Context) {
 		updatedAt time.Time
 	)
 
-	if err := h.postgres.QueryRow(
-		ctx,
-		updateQuery,
-		targetUID,
-		strings.TrimSpace(req.DisplayName),
-		strings.TrimSpace(req.Email),
-		strings.TrimSpace(req.PhoneNumber),
-		finalPhotoURL,
-		req.EmailVerified,
-		req.PhoneNumberVerified,
-		req.IsPremium,
-		func() *time.Time { if req.PremiumExpiresAt.IsZero() { return nil }; return &req.PremiumExpiresAt }(),
-	).Scan(
+	if err := h.postgres.QueryRow(ctx, updateQuery, args...).Scan(
 		&uid,
 		&displayName,
 		&email,
@@ -197,7 +279,6 @@ func (h *AuthHandler) UpdateAccount(c *gin.Context) {
 		PremiumExpiresAt: func() time.Time { if premiumExpiresAtPtr != nil { return *premiumExpiresAtPtr }; return time.Time{} }(),
 	}
 
-	// Also put latest user basic in Redis session cache (non-critical)
 	if payload, err := json.Marshal(resp); err == nil {
 		_ = h.redis.Set(ctx, "user:"+uid, payload, 24*time.Hour).Err()
 	}

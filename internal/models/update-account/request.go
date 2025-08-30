@@ -4,14 +4,14 @@ import "time"
 
 type UpdateAccountRequest struct {
 	UID         				string    `json:"uid"`
-	DisplayName 				string    `json:"displayName"`
-	Email       				string    `json:"email"`
-	PhoneNumber 				string    `json:"phoneNumber"`
-	PhotoURL    				string    `json:"photoURL"`
-	UpdatedAt   				time.Time `json:"updatedAt"`
-	CreatedAt   				time.Time `json:"createdAt"`
-	EmailVerified 			bool 			`json:"emailVerified"`
-	PhoneNumberVerified bool 			`json:"phoneNumberVerified"`
-	IsPremium 					bool 			`json:"isPremium"` // TODO: remove this later
-	PremiumExpiresAt 		time.Time `json:"premiumExpiresAt"` // TODO: remove this later
+	DisplayName 				string    `json:"displayName,omitempty"`
+	Email       				string    `json:"email,omitempty"`
+	PhoneNumber 				string    `json:"phoneNumber,omitempty"`
+	PhotoURL    				string    `json:"photoURL,omitempty"`
+	UpdatedAt   				time.Time `json:"updatedAt,omitempty"`
+	CreatedAt   				time.Time `json:"createdAt,omitempty"`
+	EmailVerified 			bool 			`json:"emailVerified,omitempty"`
+	PhoneNumberVerified bool 			`json:"phoneNumberVerified,omitempty"`
+	IsPremium 					bool 			`json:"isPremium,omitempty"` // TODO: remove this later
+	PremiumExpiresAt 		time.Time `json:"premiumExpiresAt,omitempty"` // TODO: remove this later
 }
