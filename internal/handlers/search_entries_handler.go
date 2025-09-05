@@ -95,7 +95,7 @@ func (h *EntryHandler) SearchEntries(c *gin.Context) {
 // searchEntriesWithFilters performs the actual search with all filters and returns entries
 func (h *EntryHandler) searchEntriesWithFilters(ctx context.Context, userUID string, req searchmodels.SearchEntriesRequest) ([]searchmodels.EntryResult, int, error) {
 	// Build WHERE clause to include visibility access
-	whereConditions := []string{"(e.user_uid = $1 OR e.visibility = 'public' OR EXISTS (SELECT 1 FROM entry_shares es WHERE es.entry_id = e.id AND es.shared_user_uid = $1))"}
+	whereConditions := []string{"e.user_uid = $1"}
 	args := []interface{}{userUID}
 	argCounter := 2
 
