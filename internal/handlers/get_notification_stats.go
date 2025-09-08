@@ -39,9 +39,15 @@ func (ns *NotificationsHandler) GetNotificationStats(c *gin.Context) {
 	messageKeys := ns.redisClient.Keys(ctx, pattern).Val()
 	messageCount := len(messageKeys)
 
+	// Determine current push token active status
+	pushActive := false
+	if token, err := ns.getPushTokenFromCache(userID); err == nil {
+		pushActive = token.Active
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"daily_prompts_this_week": dailyPromptCount,
 		"message_notifications":   messageCount,
-		"push_token_active":      true, // Since we found the user
+		"push_token_active":       pushActive,
 	})
 }

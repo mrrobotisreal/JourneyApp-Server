@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	stream "github.com/GetStream/stream-chat-go/v5"
+	"go.uber.org/zap"
 
 	firebaseutil "io.winapps.journeyapp/internal/firebase"
 	createmodels "io.winapps.journeyapp/internal/models/create_account"
@@ -52,14 +53,16 @@ type AuthHandler struct {
 	firebaseApp *firebase.App
 	postgres    *pgxpool.Pool
 	redis       *redis.Client
+    logger      *zap.SugaredLogger
 }
 
 // NewAuthHandler creates a new authentication handler
-func NewAuthHandler(firebaseApp *firebase.App, postgres *pgxpool.Pool, redis *redis.Client) *AuthHandler {
+func NewAuthHandler(firebaseApp *firebase.App, postgres *pgxpool.Pool, redis *redis.Client, logger *zap.SugaredLogger) *AuthHandler {
 	return &AuthHandler{
 		firebaseApp: firebaseApp,
 		postgres:    postgres,
 		redis:       redis,
+        logger:      logger,
 	}
 }
 

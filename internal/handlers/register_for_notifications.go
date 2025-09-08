@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/robfig/cron/v3"
+    "go.uber.org/zap"
 
 	notificationsmodels "io.winapps.journeyapp/internal/models/notifications"
 )
@@ -25,9 +26,10 @@ type NotificationsHandler struct {
 	db          *pgxpool.Pool
 	redisClient *redis.Client
 	cronManager *cron.Cron
+    logger      *zap.SugaredLogger
 }
 
-func NewNotificationsHandler(firebaseApp *firebase.App, dbPool *pgxpool.Pool, redisClient *redis.Client) *NotificationsHandler {
+func NewNotificationsHandler(firebaseApp *firebase.App, dbPool *pgxpool.Pool, redisClient *redis.Client, logger *zap.SugaredLogger) *NotificationsHandler {
 	ctx := context.Background()
 
 	fcmClient, err := firebaseApp.Messaging(ctx)
@@ -42,6 +44,7 @@ func NewNotificationsHandler(firebaseApp *firebase.App, dbPool *pgxpool.Pool, re
 		db:          dbPool,
 		redisClient: redisClient,
 		cronManager: c,
+		logger:      logger,
 	}
 
 	// Setup cron jobs for daily prompts
@@ -89,7 +92,7 @@ func (ns *NotificationsHandler) RegisterPushToken(c *gin.Context) {
 		tokenData.FCMToken,
 		tokenData.Platform,
 		tokenData.Timezone,
-		true,
+		tokenData.Active,
 	).Scan(&id)
 
 	if err != nil {

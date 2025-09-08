@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 
 	models "io.winapps.journeyapp/internal/models/account"
 	createmodels "io.winapps.journeyapp/internal/models/create_entry"
@@ -22,14 +23,16 @@ type EntryHandler struct {
 	firebaseApp *firebase.App
 	postgres    *pgxpool.Pool
 	redis       *redis.Client
+	logger      *zap.SugaredLogger
 }
 
 // NewEntryHandler creates a new entry handler
-func NewEntryHandler(firebaseApp *firebase.App, postgres *pgxpool.Pool, redis *redis.Client) *EntryHandler {
+func NewEntryHandler(firebaseApp *firebase.App, postgres *pgxpool.Pool, redis *redis.Client, logger *zap.SugaredLogger) *EntryHandler {
 	return &EntryHandler{
 		firebaseApp: firebaseApp,
 		postgres:    postgres,
 		redis:       redis,
+		logger:      logger,
 	}
 }
 

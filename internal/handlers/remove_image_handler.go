@@ -55,6 +55,7 @@ func (h *EntryHandler) RemoveImage(c *gin.Context) {
 	`
 	err := h.postgres.QueryRow(ctx, entryCheckQuery, req.EntryID, userUID).Scan(&entryExists)
 	if err != nil {
+		h.logError(c, err, "verify entry failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify entry"})
 		return
 	}
@@ -67,6 +68,7 @@ func (h *EntryHandler) RemoveImage(c *gin.Context) {
 	// Start database transaction
 	tx, err := h.postgres.Begin(ctx)
 	if err != nil {
+		h.logError(c, err, "begin transaction failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start database transaction"})
 		return
 	}
@@ -79,6 +81,7 @@ func (h *EntryHandler) RemoveImage(c *gin.Context) {
 	`
 	result, err := tx.Exec(ctx, imageQuery, req.EntryID, req.ImageURL)
 	if err != nil {
+		h.logError(c, err, "delete image failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove image"})
 		return
 	}
@@ -92,7 +95,7 @@ func (h *EntryHandler) RemoveImage(c *gin.Context) {
 	// Delete the physical file
 	if err := h.deleteImageFile(req.ImageURL); err != nil {
 		// Log the error but don't fail the request since the database record is already deleted
-		fmt.Printf("Warning: failed to delete image file %s: %v\n", req.ImageURL, err)
+		h.logError(c, err, "delete image file failed", "image_url", req.ImageURL)
 	}
 
 	// Update entry's updated_at timestamp
@@ -101,12 +104,14 @@ func (h *EntryHandler) RemoveImage(c *gin.Context) {
 	`
 	_, err = tx.Exec(ctx, updateEntryQuery, now, req.EntryID)
 	if err != nil {
+		h.logError(c, err, "update entry timestamp failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update entry timestamp"})
 		return
 	}
 
 	// Commit transaction
 	if err = tx.Commit(ctx); err != nil {
+		h.logError(c, err, "commit remove image tx failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove image"})
 		return
 	}

@@ -57,6 +57,7 @@ func (h *EntryHandler) AddAudio(c *gin.Context) {
 	`
 	err := h.postgres.QueryRow(ctx, entryCheckQuery, req.EntryID, userUID).Scan(&entryExists)
 	if err != nil {
+		h.logError(c, err, "verify entry failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify entry"})
 		return
 	}
@@ -69,6 +70,7 @@ func (h *EntryHandler) AddAudio(c *gin.Context) {
 	// Process and save the audio
 	audioURL, err := h.saveAudioToFileSystem(req.Audio, userUID, req.EntryID)
 	if err != nil {
+		h.logError(c, err, "save audio to filesystem failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save audio: " + err.Error()})
 		return
 	}
@@ -82,6 +84,7 @@ func (h *EntryHandler) AddAudio(c *gin.Context) {
 	if err != nil {
 		// Clean up the saved file on error
 		os.Remove(audioURL)
+		h.logError(c, err, "determine audio order failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to determine audio order"})
 		return
 	}
@@ -91,6 +94,7 @@ func (h *EntryHandler) AddAudio(c *gin.Context) {
 	if err != nil {
 		// Clean up the saved file on error
 		os.Remove(audioURL)
+		h.logError(c, err, "begin transaction failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start database transaction"})
 		return
 	}
@@ -107,6 +111,7 @@ func (h *EntryHandler) AddAudio(c *gin.Context) {
 	if err != nil {
 		// Clean up the saved file on error
 		os.Remove(audioURL)
+		h.logError(c, err, "insert audio failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add audio"})
 		return
 	}
@@ -119,6 +124,7 @@ func (h *EntryHandler) AddAudio(c *gin.Context) {
 	if err != nil {
 		// Clean up the saved file on error
 		os.Remove(audioURL)
+		h.logError(c, err, "update entry timestamp failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update entry timestamp"})
 		return
 	}
@@ -127,6 +133,7 @@ func (h *EntryHandler) AddAudio(c *gin.Context) {
 	if err = tx.Commit(ctx); err != nil {
 		// Clean up the saved file on error
 		os.Remove(audioURL)
+		h.logError(c, err, "commit audio tx failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save audio"})
 		return
 	}

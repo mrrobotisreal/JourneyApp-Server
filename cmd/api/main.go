@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"go.uber.org/zap"
 	"io.winapps.journeyapp/internal/db"
 	firebaseutil "io.winapps.journeyapp/internal/firebase"
 	"io.winapps.journeyapp/internal/handlers"
@@ -18,38 +18,49 @@ import (
 )
 
 func main() {
+    // Initialize zap logger (production)
+    baseLogger, err := zap.NewProduction()
+    if err != nil {
+        panic(err)
+    }
+    defer baseLogger.Sync()
+    logger := baseLogger.Sugar()
+
 	// Load environment variables from .env file (try multiple locations)
 	if err := godotenv.Load(); err != nil {
 		_ = godotenv.Load(".env", "../.env", "../../.env", "JourneyAppServer/.env", "cmd/api/.env")
 	}
 
-	log.Println("STREAM_API_KEY", os.Getenv("STREAM_API_KEY"))
+	logger.Infow("environment variables loaded", "STREAM_API_KEY_set", os.Getenv("STREAM_API_KEY") != "")
 	if os.Getenv("STREAM_API_KEY") == "" || os.Getenv("STREAM_API_SECRET") == "" {
-		log.Println("Warning: STREAM_API_KEY or STREAM_API_SECRET not set. Stream-dependent endpoints will fail.")
+		logger.Warn("STREAM_API_KEY or STREAM_API_SECRET not set. Stream-dependent endpoints will fail.")
 	}
 
 	// Initialize Firebase
 	firebaseApp, err := firebaseutil.InitFirebase()
 	if err != nil {
-		log.Fatalf("Failed to initialize Firebase: %v", err)
+		logger.Fatalf("Failed to initialize Firebase: %v", err)
 	}
 
 	// Initialize PostgreSQL
 	postgresDB, err := db.InitPostgres()
 	if err != nil {
-		log.Fatalf("Failed to initialize PostgreSQL: %v", err)
+		logger.Fatalf("Failed to initialize PostgreSQL: %v", err)
 	}
 	defer postgresDB.Close()
 
 	// Initialize Redis
 	redisClient, err := db.InitRedis()
 	if err != nil {
-		log.Fatalf("Failed to initialize Redis: %v", err)
+		logger.Fatalf("Failed to initialize Redis: %v", err)
 	}
 	defer redisClient.Close()
 
 	// Initialize Gin router
-	router := gin.Default()
+	router := gin.New()
+	router.Use(middleware.RequestIDMiddleware())
+	router.Use(middleware.RecoveryMiddleware(logger))
+	router.Use(middleware.RequestLoggingMiddleware(logger))
 
 	// Add CORS middleware for mobile app
 	router.Use(func(c *gin.Context) {
@@ -65,10 +76,10 @@ func main() {
 		c.Next()
 	})
 
-	// Initialize handlers
-	authHandler := handlers.NewAuthHandler(firebaseApp, postgresDB, redisClient)
-	entryHandler := handlers.NewEntryHandler(firebaseApp, postgresDB, redisClient)
-	usersHandler := handlers.NewUsersHandler(firebaseApp, postgresDB, redisClient)
+	// Initialize handlers with logger
+	authHandler := handlers.NewAuthHandler(firebaseApp, postgresDB, redisClient, logger)
+	entryHandler := handlers.NewEntryHandler(firebaseApp, postgresDB, redisClient, logger)
+	usersHandler := handlers.NewUsersHandler(firebaseApp, postgresDB, redisClient, logger)
 
 	// Define routes
 	v1 := router.Group("/api/v1")
@@ -88,7 +99,7 @@ func main() {
 		}
 
 		// Notifications routes
-		notificationsHandler := handlers.NewNotificationsHandler(firebaseApp, postgresDB, redisClient)
+		notificationsHandler := handlers.NewNotificationsHandler(firebaseApp, postgresDB, redisClient, logger)
 		notifications := v1.Group("/notifications")
 		notifications.Use(middleware.AuthMiddleware(firebaseApp, postgresDB, redisClient))
 		{
@@ -154,9 +165,9 @@ func main() {
 
 	// Start server in a goroutine
 	go func() {
-		log.Println("Server starting on port 9091...")
+		logger.Infow("server starting", "addr", ":9091")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start server: %v", err)
+			logger.Fatalf("Failed to start server: %v", err)
 		}
 	}()
 
@@ -164,15 +175,15 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutting down server...")
+	logger.Info("Shutting down server...")
 
 	// Give a 5 second timeout for graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		logger.Fatalf("Server forced to shutdown: %v", err)
 	}
 
-	log.Println("Server exited")
+	logger.Info("Server exited")
 }
